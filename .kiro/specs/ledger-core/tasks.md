@@ -245,7 +245,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - P25, for any anchor date: chain verifies, exactly 1 overdue loan, exactly the 2 planted anomalies, deterministic.
     - Examples: 12 members, 3 leaders; each legitimate loan approved by a leader who isn't the borrower.
 
-- [ ] 23. Seed script `npm run db:seed`
+- [x] 23. Seed script `npm run db:seed`
   - Contents: `scripts/seed.ts`, the `AuthAdmin` interface with a Supabase implementation (`@supabase/supabase-js`, used by this script only), and the env guards.
   - Covers: 14.9–14.11.
   - Tests:

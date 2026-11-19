@@ -20,9 +20,11 @@
     "test:integration": "vitest run --config vitest.integration.config.ts --passWithNoTests",
     "build": "next build",
     "mutation:check": "node scripts/mutation-check.mjs",
-    "db:roles-login": "node scripts/db-roles-login.ts"
+    "db:roles-login": "node scripts/db-roles-login.ts",
+    "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.2",
     "next": "^15.5.29",
     "pg": "^8.23.1",
     "react": "^19.3.1",
@@ -41,6 +43,7 @@
     "eslint": "^10.15.0",
     "fast-check": "^4.10.3",
     "tailwindcss": "^4.3.5",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.73.0",
     "vitest": "^5.1.1"
