@@ -63,14 +63,14 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 
 #### Acceptance Criteria
 
-1. The system SHALL store for each member: id, group id, display name, phone number, role (`member`, `chair`, `treasurer`, `secretary`), status (`active`, `suspended`), id of the leader who registered them, and registered-at time.
+1. The system SHALL store for each member: id, group id, display name, phone number, role (`member`, `chair`, `treasurer`, `secretary`), status (`active`, `suspended`), id of the leader who registered them, registered-at time, and an optional link to a Supabase Auth user (used for leader sign-in).
 2. WHEN a leader registers a person with a display name and phone number, the domain SHALL create a member in the leader's group with role `member` and status `active`.
 3. IF the person registering is not a leader of that group, THEN the domain SHALL reject the registration with error `NOT_A_LEADER`.
 4. IF the display name, after trimming, is empty, longer than 30 characters, or contains characters outside the GSM-7 basic set, THEN the domain SHALL reject it with error `INVALID_NAME`.
 5. The domain SHALL normalize phone numbers given as `+2567XXXXXXXX`, `2567XXXXXXXX` or `07XXXXXXXX`, with optional spaces or hyphens, to `+256` followed by 9 digits.
 6. IF a phone number cannot be normalized to `+256` followed by exactly 9 digits, THEN the domain SHALL reject it with error `INVALID_PHONE`.
 7. IF the normalized phone number already belongs to a member of any group, THEN the domain SHALL reject the registration with error `PHONE_ALREADY_REGISTERED`.
-8. A newly registered member SHALL have no PIN. Setting the PIN is handled by the ussd-engine spec.
+8. A newly registered member SHALL have no PIN. PIN credentials SHALL be stored in a separate member credentials table, not in the members table. Setting and checking the PIN is handled by the ussd-engine spec.
 9. WHILE a member is suspended, the domain SHALL reject loan requests from that member with error `MEMBER_SUSPENDED` and SHALL still accept their deposits and repayments.
 
 ### Requirement 4: Ledger entries
@@ -218,8 +218,9 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 7. The repository SHALL run domain validation and compute the hash with the domain functions before inserting. It SHALL NOT duplicate domain rules.
 8. The migrations SHALL create a read-only database role with `SELECT` only on these tables, for use by the MCP server and agent.
 9. The migrations SHALL enable Row Level Security on every table with no policies for the `anon` or `authenticated` roles.
-10. `npm test` SHALL run the migrations against PGlite (a devDependency, never a runtime dependency) and test 13.2, 13.3, 13.4, 13.6, 13.8 and 13.9, with no external database or network required.
-11. WHERE a test needs more than one database connection (13.5), it SHALL run in `npm run test:integration` against a local Supabase database instead, and SHALL NOT be part of `npm test`.
+10. `npm test` SHALL run the migrations against PGlite (a devDependency, never a runtime dependency) and test 13.2, 13.3, 13.4, 13.6, 13.8, 13.9 and 13.12, with no external database or network required.
+11. WHERE a test needs more than one database connection (13.5), it SHALL run in `npm run test:integration` against a local Supabase database instead, and SHALL NOT be part of `npm test`. The README SHALL document the exact commands to run it.
+12. The migrations SHALL create an application role (`ghost_app`) that owns no tables and has only: `SELECT` and `INSERT` on ledger entries and checkpoints; `SELECT` on groups; `SELECT` and `INSERT` on members; and, on a separate member credentials table, `SELECT`, `INSERT` of the member id, and `UPDATE` of only the PIN hash, failed-attempt counter and locked-until columns. The app SHALL connect at runtime only as this role.
 
 ### Requirement 14: Seed data
 
@@ -227,7 +228,7 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 
 #### Acceptance Criteria
 
-1. The seed script SHALL create the group "Tubeera Together Savings Group" with 12 fictional members, at least one of each leader role, and fixed group rules.
+1. The seed script SHALL create the group "Tubeera Together Savings Group" with 12 fictional members, at least one of each leader role (so at least two leaders exist and no leader has to approve their own loan), and fixed group rules.
 2. The seed script SHALL create about 3 months of history ending the day before the seed runs: weekly savings and social fund deposits, several loans each going through request, approval and disbursement, and repayments.
 3. After seeding, `listOverdueLoans` as of the seed time SHALL return exactly one loan.
 4. The seed script SHALL plant one suspicious loan: a correctly hashed and chained `LOAN_DISBURSEMENT` with no `LOAN_REQUEST` or `LOAN_APPROVAL` entry, whose principal is above the borrower's loan limit.
@@ -236,7 +237,8 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 7. The seed script SHALL produce the same data for the same anchor date, and SHALL accept an anchor date argument for testing.
 8. The seed script SHALL build every entry with the domain's hashing function. Only the planted loan SHALL skip command validation (to simulate an insider).
 9. IF the group already exists, THEN the seed script SHALL exit with a clear message and change nothing.
-10. The seed script SHALL refuse to run unless `DATABASE_URL` is set and the environment is not production.
+10. The seed script SHALL refuse to run unless the privileged connection string (`ADMIN_DATABASE_URL`) is set and the environment is not production.
+11. The seed script SHALL create two demo leader accounts in Supabase Auth (email and password, password taken from an environment variable) and link each to a seeded leader member. It SHALL NOT implement any custom authentication.
 
 ### Requirement 15: Tamper demo
 
@@ -249,6 +251,7 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 3. IF `ALLOW_TAMPER_DEMO` is not `true`, THEN `demo:tamper` SHALL refuse to run and change nothing.
 4. The system SHALL provide `npm run demo:restore`, which puts the original value back the same way, after which `verifyChain` SHALL succeed again.
 5. Both scripts SHALL print which entry they changed and the before and after values.
+6. Both scripts SHALL connect only through the privileged connection string (`ADMIN_DATABASE_URL`), never as the application role. IF the connected user does not own the ledger table, THEN they SHALL exit without changing anything.
 
 ### Requirement 16: Required property tests
 
@@ -280,7 +283,7 @@ Known gap that remains: checkpoints cannot detect deletion of entries added afte
 ## Handed to later specs
 
 - **ussd-engine:** a registered member's first dial sets their PIN. An unknown phone number gets an `END` screen saying they are not registered and should ask their group leader. Loan requests from USSD create `LOAN_REQUEST` entries, and the member can see the request's status.
-- **dashboard-simulator:** leader actions to register a member, approve or reject a loan request, and (optional, Requirement 17) save a checkpoint. Because the dashboard now writes, it needs leader sign-in; that spec decides how. It also decides whether "Approve" pays out at once (Requirement 10.17) or there is a separate "Disburse" button.
+- **dashboard-simulator:** leader actions to register a member, reject a loan request, approve a loan request, and (optional, Requirement 17) save a checkpoint. "Approve" is one button that records the approval and the disbursement together (Requirement 10.17); the domain keeps them as separate steps. Leader sign-in uses Supabase Auth with email and password, no custom auth.
 
 ## Out of scope for this spec
 

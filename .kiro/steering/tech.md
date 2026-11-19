@@ -32,7 +32,9 @@ Do not deviate from this stack without asking the user first.
 
 - Business-rule rejections in the domain return a typed result (`{ ok: false, error }`), not exceptions. Throw only for programmer errors. This keeps the USSD path crash-free.
 - Time is stored in UTC. Display and time-of-day rules use Africa/Kampala (UTC+3, no daylight saving). The domain takes "now" as a parameter; it never reads the clock.
-- Server-only DB access through `DATABASE_URL`. No Supabase client in the browser. Row Level Security is enabled on every table with no anon policies, so the public Supabase API exposes nothing.
+- Leader sign-in uses Supabase Auth (email and password). No custom auth. Leaders map to members through `members.auth_user_id`.
+- Server-only DB access. No Supabase client in the browser for data access. Three connection strings, one per role: `DATABASE_URL` (`ghost_app`, app runtime), `READONLY_DATABASE_URL` (`ghost_readonly`, MCP and agent), `ADMIN_DATABASE_URL` (table owner, used only by migrations, seed and demo scripts).
+- Runtime connections go through Supabase's transaction pooler: only `pg_advisory_xact_lock`, no session state, no named prepared statements. Row Level Security is enabled on every table with no anon policies, so the public Supabase API exposes nothing.
 - Env vars are parsed once with zod in `src/lib/env.ts`. `.env.example` lists every variable. Never commit secrets or real `.env` files.
 - Never log raw USSD `text` (it contains PINs), PINs, PIN hashes, or API keys.
 

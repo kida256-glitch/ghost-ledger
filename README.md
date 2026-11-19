@@ -16,7 +16,19 @@ _TBD. See `.env.example` once added._
 
 ## Running tests
 
-_TBD_
+These commands become available as the ledger-core tasks are implemented.
+
+```bash
+# Unit, property-based and database tests (PGlite, in-process). No Docker or network needed.
+npm test
+
+# Concurrency integration test against a local Supabase database. Needs Docker running.
+npx supabase start
+npx supabase db reset
+npm run test:integration
+```
+
+`npm run test:integration` connects to `INTEGRATION_DATABASE_URL`, which defaults to the local Supabase database at `postgresql://postgres:postgres@127.0.0.1:54322/postgres`. It refuses to run against any host other than `127.0.0.1` or `localhost`. Run `npx supabase db reset` before each run, because test entries can't be deleted from the append-only ledger.
 
 ## Roadmap
 
