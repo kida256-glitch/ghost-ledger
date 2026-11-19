@@ -18,11 +18,12 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 - **Member**: a person in one group, identified by phone number.
 - **Leader**: an active member with role chair, treasurer or secretary.
 - **Entry**: one immutable ledger record.
-- **Money entry**: an entry of type `DEPOSIT`, `SOCIAL_FUND_CONTRIBUTION`, `LOAN_DISBURSEMENT` or `LOAN_REPAYMENT`.
+- **Money entry**: an entry of type `DEPOSIT_CONFIRMATION`, `SOCIAL_FUND_CONTRIBUTION`, `LOAN_DISBURSEMENT` or `LOAN_REPAYMENT`.
 - **Chain**: a group's entries ordered by `seq`, each linked to the previous by hash.
 - **Genesis hash**: 64 `0` characters, used as `prev_hash` of a group's first entry.
 - **Head**: the entry with the highest `seq` in a group.
-- **Savings balance**: a member's total savings deposits, net of reversals.
+- **Savings balance**: a member's total confirmed savings deposits (`DEPOSIT_CONFIRMATION` entries), net of reversals. Unconfirmed deposit requests do not count.
+- **Deposit request status**: `pending` until a leader confirms it, then `confirmed`. Reversing a confirmation does not reopen the request; the member files a new one.
 - **Social fund balance**: a member's total social fund contributions, net of reversals.
 - **Loan status**: one of `requested`, `approved`, `rejected`, `disbursed`, `repaid`.
 - **Open loan**: a loan with status `requested`, `approved` or `disbursed`.
@@ -80,17 +81,19 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 
 #### Acceptance Criteria
 
-1. The domain SHALL support these entry types: `DEPOSIT` (savings), `SOCIAL_FUND_CONTRIBUTION`, `LOAN_REQUEST`, `LOAN_APPROVAL`, `LOAN_REJECTION`, `LOAN_DISBURSEMENT`, `LOAN_REPAYMENT`, `REVERSAL`.
+1. The domain SHALL support these entry types: `DEPOSIT_REQUEST`, `DEPOSIT_CONFIRMATION` (savings), `SOCIAL_FUND_CONTRIBUTION`, `LOAN_REQUEST`, `LOAN_APPROVAL`, `LOAN_REJECTION`, `LOAN_DISBURSEMENT`, `LOAN_REPAYMENT`, `REVERSAL`.
 2. Each entry SHALL record: id, group id, seq, type, subject member id (whose balance or loan it concerns), actor member id (who recorded it; see 4.10), occurred-at time (UTC, millisecond precision), channel (`ussd`, `dashboard`, `seed`, `system`), optional idempotency key, prev_hash and hash.
-3. Money entries, `LOAN_REQUEST` and `REVERSAL` entries SHALL record an amount. `LOAN_APPROVAL` and `LOAN_REJECTION` entries SHALL NOT record an amount.
-4. Loan entries SHALL also record: the loan id (all loan types); the term in months (`LOAN_REQUEST`); a reason (`LOAN_REJECTION`); the interest amount, term in months and due date (`LOAN_DISBURSEMENT`). A `REVERSAL` entry SHALL also record the id of the entry it reverses and a reason.
+3. Money entries, `DEPOSIT_REQUEST`, `LOAN_REQUEST` and `REVERSAL` entries SHALL record an amount. `LOAN_APPROVAL` and `LOAN_REJECTION` entries SHALL NOT record an amount.
+4. Loan entries SHALL also record: the loan id (all loan types); the term in months (`LOAN_REQUEST`); a reason (`LOAN_REJECTION`); the interest amount, term in months and due date (`LOAN_DISBURSEMENT`). A `REVERSAL` entry SHALL also record the id of the entry it reverses and a reason. A `DEPOSIT_CONFIRMATION` entry SHALL also record the id of the `DEPOSIT_REQUEST` it confirms.
 5. The domain SHALL add entries only at the end of a group's chain, with `seq` one greater than the previous entry (starting at 1). It SHALL expose no operation that modifies or removes an entry.
 6. WHEN a correction is needed, the domain SHALL record a `REVERSAL` entry that cancels the original entry's effect, and the original entry SHALL remain unchanged.
 7. IF a reversal targets an entry that does not exist, belongs to another group, is not a money entry, or has already been reversed, THEN the domain SHALL reject it with error `INVALID_REVERSAL`.
 8. IF a reversal targets a `LOAN_DISBURSEMENT` whose loan has any repayment that is not reversed, THEN the domain SHALL reject it with error `INVALID_REVERSAL`.
 9. IF a new entry's occurred-at time is earlier than the previous entry's in the same group, THEN the domain SHALL reject it with error `OUT_OF_ORDER`.
-10. An entry's actor SHALL match its channel: `ussd` entries SHALL have an actor equal to the subject member (a member acting for themselves); `dashboard` entries SHALL have an actor; `seed` and `system` entries SHALL have no actor. The entry schema SHALL treat any other combination as malformed.
+10. An entry's actor SHALL match its channel: `ussd` entries SHALL have an actor equal to the subject member (a member acting for themselves); `dashboard` entries SHALL have an actor; `seed` entries MAY have an actor (so seeded approvals can name the approving leader); `system` entries SHALL have no actor. The entry schema SHALL treat any other combination as malformed.
 11. IF a rejection or reversal reason is empty, longer than 120 characters, or contains characters that cannot be stored (NUL or unpaired surrogates), THEN the domain SHALL reject the command with error `INVALID_REASON`.
+12. IF the actor recording a `REVERSAL` is not a leader of the group, THEN the domain SHALL reject it with error `NOT_A_LEADER`. Reversals are a dashboard action.
+13. Only the seed script, connected as the table owner, SHALL be able to insert `seed`-channel entries. The database SHALL reject `seed`-channel inserts by the application role (`ghost_app`), and the repository SHALL offer no way to choose the `seed` channel.
 
 ### Requirement 5: Hash chain
 
@@ -145,13 +148,18 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 
 ### Requirement 9: Deposits
 
-**User Story:** As a member, I want to record savings and social fund contributions, so that my balance grows.
+**User Story:** As a member, I want to record savings and social fund contributions, so that my balance grows. As a leader, I want every savings deposit confirmed by a leader other than the depositor, so that no one can raise their own savings, and with it their loan limit, alone.
 
 #### Acceptance Criteria
 
-1. WHEN a member records a savings deposit of at least the group's minimum deposit, the domain SHALL append a `DEPOSIT` entry and the member's savings balance SHALL increase by exactly that amount.
-2. IF a savings deposit is below the group's minimum deposit, THEN the domain SHALL reject it with error `BELOW_MIN_DEPOSIT`.
+1. WHEN a member (over USSD, for themselves) or a leader (on the dashboard) records a savings deposit request of a valid amount, at least the group's minimum deposit, the domain SHALL append a `DEPOSIT_REQUEST` entry with status `pending`. A deposit request SHALL NOT change any balance or group cash.
+2. IF a savings deposit request is below the group's minimum deposit, THEN the domain SHALL reject it with error `BELOW_MIN_DEPOSIT`.
 3. WHEN a member records a social fund contribution of a valid amount, the domain SHALL append a `SOCIAL_FUND_CONTRIBUTION` entry and the member's social fund balance SHALL increase by exactly that amount.
+4. IF a deposit request is recorded on the dashboard by an actor who is not a leader of the group, THEN the domain SHALL reject it with error `NOT_A_LEADER`.
+5. WHEN a leader confirms a `pending` deposit request, the domain SHALL append a `DEPOSIT_CONFIRMATION` entry with the request's member and amount, the member's savings balance and group cash SHALL increase by exactly that amount, and the request's status SHALL be `confirmed`.
+6. IF the actor confirming a deposit is not a leader of the group, THEN the domain SHALL reject it with error `NOT_A_LEADER`. IF the actor is the depositing member, THEN the domain SHALL reject it with error `SELF_APPROVAL`.
+7. IF a confirmation targets a deposit request that does not exist or is not `pending`, THEN the domain SHALL reject it with error `INVALID_DEPOSIT_STATE`.
+8. Loan limits (R10.1) and all savings totals SHALL count confirmed deposits only.
 
 ### Requirement 10: Loan requests, approval and disbursement
 
@@ -205,6 +213,7 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 7. The thresholds in 12.5 and 12.6 (count, window length, hours) SHALL be configurable, with the values above as defaults.
 8. The domain SHALL report each entry at most once per rule. Overlapping windows for the same member and rule SHALL merge into one anomaly.
 9. The domain SHALL apply the rules to entries as stored, including entries that bypassed command validation, because insiders may write to the database directly.
+10. WHEN a `DEPOSIT_CONFIRMATION` does not confirm an earlier `DEPOSIT_REQUEST` in the chain for the same member and amount, or confirms a request that an earlier confirmation already confirmed, or is recorded by the depositing member themselves, the domain SHALL report a `DEPOSIT_WITHOUT_REQUEST` anomaly with severity `high`.
 
 ### Requirement 13: Persistence
 
@@ -223,7 +232,7 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 9. The migrations SHALL enable Row Level Security on every table with no policies for the `anon` or `authenticated` roles.
 10. `npm test` SHALL run the migrations against PGlite (a devDependency, never a runtime dependency) and test 13.2, 13.3, 13.4, 13.6, 13.8, 13.9 and 13.12, with no external database or network required.
 11. WHERE a test needs more than one database connection (13.5), it SHALL run in `npm run test:integration` against a local Supabase database instead, and SHALL NOT be part of `npm test`. The README SHALL document the exact commands to run it.
-12. The migrations SHALL create an application role (`ghost_app`) that owns no tables and has only: `SELECT` and `INSERT` on ledger entries and checkpoints; `SELECT` on groups; `SELECT` and `INSERT` on members; and, on a separate member credentials table, `SELECT`, `INSERT` of the member id, and `UPDATE` of only the PIN hash, failed-attempt counter and locked-until columns. The app SHALL connect at runtime only as this role.
+12. The migrations SHALL create an application role (`ghost_app`) that owns no tables and has only: `SELECT` and `INSERT` on ledger entries and checkpoints; `SELECT` on groups; `SELECT` and `INSERT` on members; and, on a separate member credentials table, `SELECT`, `INSERT` of the member id, and `UPDATE` of only the PIN hash, failed-attempt counter and locked-until columns. The app SHALL connect at runtime only as this role. The insert policy for `ghost_app` on ledger entries SHALL reject `seed`-channel rows (R4.13).
 
 ### Requirement 14: Seed data
 
@@ -232,7 +241,7 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 #### Acceptance Criteria
 
 1. The seed script SHALL create the group "Tubeera Together Savings Group" with 12 fictional members, at least one of each leader role (so at least two leaders exist and no leader has to approve their own loan), and fixed group rules.
-2. The seed script SHALL create about 3 months of history ending the day before the seed runs: weekly savings and social fund deposits, several loans each going through request, approval and disbursement, and repayments.
+2. The seed script SHALL create about 3 months of history ending the day before the seed runs: weekly savings deposits (each a request confirmed by a leader other than the depositor) and social fund contributions, several loans each going through request, approval and disbursement, and repayments. Seed entries use the `seed` channel; approvals and confirmations name the acting leader (R4.10).
 3. After seeding, `listOverdueLoans` as of the seed time SHALL return exactly one loan.
 4. The seed script SHALL plant one suspicious loan: a correctly hashed and chained `LOAN_DISBURSEMENT` with no `LOAN_REQUEST` or `LOAN_APPROVAL` entry, whose principal is above the borrower's loan limit.
 5. After seeding, `detectAnomalies` as of the seed time SHALL return exactly two anomalies, both referencing only the planted disbursement: one `DISBURSEMENT_WITHOUT_APPROVAL` and one `LOAN_ABOVE_SAVINGS`.
@@ -249,7 +258,7 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 
 #### Acceptance Criteria
 
-1. The system SHALL provide `npm run demo:tamper`, which, as the table owner, disables the append-only trigger, changes the amount of one past `DEPOSIT` entry without recomputing its hash, and re-enables the trigger in the same transaction.
+1. The system SHALL provide `npm run demo:tamper`, which, as the table owner, disables the append-only trigger, changes the amount of one past `DEPOSIT_CONFIRMATION` entry without recomputing its hash, and re-enables the trigger in the same transaction.
 2. WHEN `demo:tamper` has run, `verifyChain` SHALL fail with `HASH_MISMATCH` at the tampered entry's `seq`.
 3. IF `ALLOW_TAMPER_DEMO` is not `true`, THEN `demo:tamper` SHALL refuse to run and change nothing.
 4. The system SHALL provide `npm run demo:restore`, which puts the original value back the same way, after which `verifyChain` SHALL succeed again.
@@ -285,12 +294,14 @@ Known gap that remains: checkpoints cannot detect deletion of entries added afte
 
 ## Handed to later specs
 
-- **Open decision before ussd-engine: who confirms deposits.** Today R9.1 lets a member record their own deposit over USSD, with nothing confirming that the cash was paid. A member could inflate their savings, and so their loan limit (R10.1). Leader approval (R10.6) re-checks the limit, but against the inflated savings. No anomaly rule (R12) flags self-recorded deposits.
-- **ussd-engine:** a registered member's first dial sets their PIN. An unknown phone number gets an `END` screen saying they are not registered and should ask their group leader. Loan requests from USSD create `LOAN_REQUEST` entries, and the member can see the request's status.
-- **dashboard-simulator:** leader actions to register a member, reject a loan request, approve a loan request, and (optional, Requirement 17) save a checkpoint. "Approve" is one button that records the approval and the disbursement together (Requirement 10.17); the domain keeps them as separate steps. Leader sign-in uses Supabase Auth with email and password, no custom auth.
+- **Decided (task 15 review): deposits are request-and-confirm (R9).** A member can no longer raise their own savings or loan limit alone.
+- **ussd-engine:** a registered member's first dial sets their PIN. An unknown phone number gets an `END` screen saying they are not registered and should ask their group leader. The **Save** flow creates a `DEPOSIT_REQUEST` (not a credited deposit) and tells the member a leader will confirm it; the member can see pending and confirmed deposits. Loan requests from USSD create `LOAN_REQUEST` entries, and the member can see the request's status. USSD offers no reversals (R4.12).
+- **dashboard-simulator:** leader actions to register a member, **confirm deposits** (a list of pending deposit requests; a leader cannot confirm their own), reject a loan request, approve a loan request, reverse an entry (leaders only), and (optional, Requirement 17) save a checkpoint. "Approve" is one button that records the approval and the disbursement together (Requirement 10.17); the domain keeps them as separate steps. Leader sign-in uses Supabase Auth with email and password, no custom auth.
 
 ## Out of scope for this spec
 
+- Rejecting or cancelling a deposit request. A pending request changes nothing, so leaving it unconfirmed is safe; a reject action can be added later.
+- Confirmation for social fund contributions. They don't affect loan limits, but they do count in group cash; revisit if that matters.
 - Share-out calculation and closing a cycle (the cycle dates are stored only). Share-out is listed as roadmap in the README.
 - Social fund payouts and grants.
 - Fines.

@@ -22,11 +22,11 @@ Read path: `LedgerReader` loads entries, and callers use domain functions (`repl
 
 | # | Field | Representation |
 |---|-------|----------------|
-| 0 | format tag | the string `"ghost-ledger/entry/v1"` |
+| 0 | format tag | the string `"ghost-ledger/entry/v2"` |
 | 1 | `id` | lowercase UUID string |
 | 2 | `groupId` | lowercase UUID string |
 | 3 | `seq` | decimal string, e.g. `"42"` |
-| 4 | `type` | e.g. `"DEPOSIT"` |
+| 4 | `type` | e.g. `"DEPOSIT_CONFIRMATION"` |
 | 5 | `subjectMemberId` | lowercase UUID string |
 | 6 | `actorMemberId` | lowercase UUID string or `null` |
 | 7 | `occurredAt` | `YYYY-MM-DDTHH:mm:ss.sssZ` (UTC, exactly 3 fraction digits) |
@@ -38,8 +38,9 @@ Read path: `LedgerReader` loads entries, and callers use domain functions (`repl
 | 13 | `interestAmount` | decimal string or `null` |
 | 14 | `dueDate` | `YYYY-MM-DD` (Kampala calendar date) or `null` |
 | 15 | `reversesEntryId` | lowercase UUID string or `null` |
-| 16 | `reason` | string or `null` |
-| 17 | `prevHash` | 64 lowercase hex chars |
+| 16 | `confirmsEntryId` | lowercase UUID string or `null` (the `DEPOSIT_REQUEST` a `DEPOSIT_CONFIRMATION` confirms) |
+| 17 | `reason` | string or `null` |
+| 18 | `prevHash` | 64 lowercase hex chars |
 
 `hash = lowercase hex SHA-256 of the UTF-8 bytes of the canonical string`.
 
@@ -49,7 +50,8 @@ The representation rules make every hash input deterministic:
 - **Absent fields** are always `null`. They are never omitted and never `""`.
 - **UUIDs** must be lowercase. Postgres prints `uuid` values in lowercase, so an uppercase id would hash differently after a round trip. The domain's zod schema rejects uppercase ids.
 - **Strings** are hashed exactly as stored, with no Unicode normalization. `reason` is 1 to 120 characters, and `idempotencyKey` is 1 to 128 characters.
-- **Version tag.** Field 0 is the constant `"ghost-ledger/entry/v1"`. It is not a stored column: it exists only inside the canonical string, so it is baked into every hash. Any change to the canonical format needs a new tag and a migration plan for existing chains (for example, verifying old entries with the v1 rules up to a recorded seq). Without both, every stored chain would stop verifying.
+- **Version tag.** Field 0 is the constant `"ghost-ledger/entry/v2"`. It is not a stored column: it exists only inside the canonical string, so it is baked into every hash. Any change to the canonical format needs a new tag and a migration plan for existing chains (for example, verifying old entries with the old rules up to a recorded seq). Without both, every stored chain would stop verifying.
+- **v1 → v2 (task 15 review).** v2 adds field 16, `confirmsEntryId`, for deposit confirmation (R9), and the entry types `DEPOSIT_REQUEST` and `DEPOSIT_CONFIRMATION` replace `DEPOSIT`. No v1 entry was ever stored (the database tasks come later), so no migration plan is needed and `verifyChain` accepts v2 only. The golden vectors were recomputed with the standalone script.
 - **Golden vector.** A unit test pins one fixed entry to one fixed hash, so any accidental format change fails CI.
 
 ### 2.2 Genesis hash
@@ -104,8 +106,8 @@ create table ledger_entries (
   id uuid primary key,
   group_id uuid not null references groups(id),
   seq bigint not null check (seq >= 1),
-  type text not null check (type in ('DEPOSIT','SOCIAL_FUND_CONTRIBUTION','LOAN_REQUEST',
-        'LOAN_APPROVAL','LOAN_REJECTION','LOAN_DISBURSEMENT','LOAN_REPAYMENT','REVERSAL')),
+  type text not null check (type in ('DEPOSIT_REQUEST','DEPOSIT_CONFIRMATION','SOCIAL_FUND_CONTRIBUTION',
+        'LOAN_REQUEST','LOAN_APPROVAL','LOAN_REJECTION','LOAN_DISBURSEMENT','LOAN_REPAYMENT','REVERSAL')),
   subject_member_id uuid not null references members(id),
   actor_member_id uuid references members(id),
   occurred_at timestamptz not null check (occurred_at = date_trunc('milliseconds', occurred_at)),
@@ -117,6 +119,7 @@ create table ledger_entries (
   interest_amount bigint check (interest_amount >= 0),
   due_date date,
   reverses_entry_id uuid references ledger_entries(id),
+  confirms_entry_id uuid references ledger_entries(id),
   reason text,
   prev_hash char(64) not null check (prev_hash ~ '^[0-9a-f]{64}$'),
   hash char(64) not null check (hash ~ '^[0-9a-f]{64}$'),
@@ -256,7 +259,9 @@ grant select on groups, members, ledger_entries to ghost_readonly;   -- explicit
 alter table <t> enable row level security;
 revoke all on <t> from anon, authenticated;
 create policy app_select on <t> for select to ghost_app using (true);          -- tables ghost_app may read
-create policy app_insert on <t> for insert to ghost_app with check (true);     -- tables ghost_app may insert into
+create policy app_insert on <t> for insert to ghost_app with check (true);     -- members, member_credentials
+create policy app_insert on ledger_entries for insert to ghost_app
+  with check (channel <> 'seed');                                              -- R4.13: only the owner seeds
 create policy app_update on member_credentials for update to ghost_app using (true) with check (true);
 create policy readonly_select on <t> for select to ghost_readonly using (true); -- not member_credentials
 ```
@@ -318,7 +323,8 @@ interface CommandContext {
   channel: Channel; actorMemberId: Uuid | null; idempotencyKey?: string;
 }
 type Command =
-  | { kind: 'deposit'; memberId: Uuid; amount: number }
+  | { kind: 'requestDeposit'; memberId: Uuid; amount: number }       // DEPOSIT_REQUEST, no balance change
+  | { kind: 'confirmDeposit'; requestEntryId: Uuid }                 // DEPOSIT_CONFIRMATION by another leader
   | { kind: 'contributeSocialFund'; memberId: Uuid; amount: number }
   | { kind: 'requestLoan'; memberId: Uuid; principal: number; termMonths: number }
   | { kind: 'approveLoan'; loanId: Uuid }
@@ -354,7 +360,9 @@ Key behaviours:
 
 - **`execute`.** It validates the command against `state`, builds a draft, seals it (`seq = head + 1`, `prevHash = head.hash` or genesis, `hash`), then applies it. It returns an error if any balance in R8.1 would go negative. On error the input state is returned untouched.
 - **`replay` / `applyEntry` are total.** They never throw, even on forged entries (for example a disbursement with no approval). Invariants hold for every ledger produced by commands. Forged ledgers are reported, not "fixed".
-- **Reversals.** A reversal undoes its target using the target's amount. Reversing a disbursement returns the loan to `approved`. Reversing a repayment returns the loan to `disbursed` if it had reached `repaid`.
+- **Reversals.** Leaders only (R4.12). A reversal undoes its target using the target's amount. Reversing a disbursement returns the loan to `approved`. Reversing a repayment returns the loan to `disbursed` if it had reached `repaid`. Reversing a deposit confirmation removes the savings; the request stays `confirmed` (consumed), so a correction is a new request.
+- **Deposits (R9).** `requestDeposit` checks the member, amount and minimum; on the dashboard the actor must be a leader. It records a `DEPOSIT_REQUEST` with status `pending` and changes no balance. `confirmDeposit` checks, in order: the request exists and is `pending` (`INVALID_DEPOSIT_STATE`), the actor is a leader (`NOT_A_LEADER`), the actor isn't the depositor (`SELF_APPROVAL`). It then records a `DEPOSIT_CONFIRMATION` with the request's member and amount and `confirmsEntryId` = the request id. Savings, and so loan limits, come from confirmations only.
+- **Seed channel.** The domain accepts `channel: 'seed'` (the seed builder uses the real commands). Runtime can't use it: `LedgerWriter.execute` types its channel as `'ussd' | 'dashboard'`, and the `ghost_app` insert policy rejects `seed` rows (§6.3).
 - **Interest.** `computeInterest = ceil(p × bps × m / 10000)`, computed as `Math.floor((p*bps*m + 9999) / 10000)`. The product is at most 5e7 × 3000 × 12 = 1.8e12, well under 2^53. A property test compares it with a BigInt version (R1.4).
 - **Due date.** Take the Kampala date of the disbursement and add the term in months, clamping the day to the month length. A loan is overdue when `kampalaDate(asOf) > dueDate`. Days overdue are counted in Kampala calendar days.
 - **Anomaly windows.** Each anomaly rule collects the windows that meet its threshold, anchored at each entry. Windows that share entries are merged transitively, giving one anomaly per merged cluster (R12.8). Entries after `asOf` are ignored. Output is sorted by first `seq`, then rule.
@@ -398,7 +406,7 @@ createLedgerWriter(db: Db, deps: { clock: () => Date; newId: () => Uuid }): Ledg
 
 - **Group.** "Tubeera Together Savings Group", code `TUBEERA`. Rules: 1,000 bps (10% per month), multiplier 3, max term 3 months, minimum deposit UGX 2,000. The cycle starts at anchor − 91 days.
 - **Members.** 12 fictional names. One each of chair, treasurer and secretary; the other 9 are members.
-- **History.** 13 weekly meetings on Saturday at 10:00 Kampala time. Savings deposits are UGX 5,000 to 20,000 per member. Social fund is UGX 1,000 per member.
+- **History.** 13 weekly meetings on Saturday at 10:00 Kampala time, channel `seed`. Savings deposits are UGX 5,000 to 20,000 per member, each a `DEPOSIT_REQUEST` confirmed by the treasurer (or by the chair for the treasurer's own deposits). Social fund is UGX 1,000 per member.
 - **Loans.** About 5 loans, each going through request, approval by a different leader, then disbursement. All are repaid or not yet due, except **one overdue**: disbursed about 70 days before the anchor for 1 month, and partly repaid.
 - **Planted loan.** A `LOAN_DISBURSEMENT` at 02:13 Kampala time, about 10 days before the anchor:
   - actor: the secretary;
@@ -424,7 +432,7 @@ The Auth step sits behind an `AuthAdmin` interface, so tests use a fake.
 
 - Both refuse to run unless `ALLOW_TAMPER_DEMO=true`.
 - Both connect only with `ADMIN_DATABASE_URL`, the separate privileged connection, and never with `DATABASE_URL` (`ghost_app`). Before changing anything, they check that `current_user` owns `ledger_entries` and exit if it doesn't.
-- **Tamper** targets the first `DEPOSIT` with `seq >= 10` (or `--seq N`). In one transaction it runs `ALTER TABLE ledger_entries DISABLE TRIGGER ledger_entries_append_only; UPDATE … SET amount = amount + 50000; ENABLE TRIGGER …`, then prints the seq and the before and after values.
+- **Tamper** targets the first `DEPOSIT_CONFIRMATION` with `seq >= 10` (or `--seq N`). In one transaction it runs `ALTER TABLE ledger_entries DISABLE TRIGGER ledger_entries_append_only; UPDATE … SET amount = amount + 50000; ENABLE TRIGGER …`, then prints the seq and the before and after values.
 - **Restore** is stateless. It runs `verifyChain`, takes the first `HASH_MISMATCH` entry, and checks that `amount − 50000` reproduces the stored hash. Only then does it write that value back, the same way. Otherwise it refuses.
 - Both work on PGlite: the probe confirmed `DISABLE TRIGGER` inside a transaction. They are tested there.
 
@@ -475,7 +483,7 @@ Ledgers are generated as random `Command` sequences run through `executeAll`, ke
 | P13 | request, approval and rejection entries leave all balances unchanged | 7.7 |
 | P14 | no balance is ever negative in command ledgers | 8.1 |
 | P15 | a rejected command leaves the state and head unchanged | 8.2 |
-| P16 | a deposit or contribution raises the balance by exactly its amount; below-minimum deposits are rejected | 9.1–9.3 |
+| P16 | deposit requests change no balance; a confirmation or contribution raises the balance by exactly its amount; below-minimum requests are rejected | 9.1–9.3, 9.5 |
 | P17 | loan request, approval and disbursement are accepted iff a reference model says so (limit, open loan, term, cash) | 10.1–10.8, 10.13–10.15 |
 | P18 | no command ledger has a disbursement without an earlier approval | 10.16 |
 | P19 | approve, reject and disburse by a non-leader or by the borrower are always rejected | 10.11, 10.12, 3.3 |
@@ -487,6 +495,9 @@ Ledgers are generated as random `Command` sequences run through `executeAll`, ke
 | P25 | for any anchor date, the seed verifies, has 1 overdue loan and exactly the 2 planted anomalies, and is deterministic | 14.2–14.7 |
 | P26 | random millisecond timestamps round-trip through PGlite byte-identical (PGlite; `numRuns` lowered) | 13.7, §2.3 |
 | P27 | truncating after a checkpoint gives `TRUNCATED`; a changed checkpoint entry gives `CHECKPOINT_MISMATCH` | 17.4, 17.5 |
+| P28 | deposit request and confirmation are accepted iff a reference model says so (leader, not self, pending, minimum); every confirmation in a command ledger confirms an earlier pending request by a different leader; loan limits use confirmed savings only | 9.1, 9.2, 9.4–9.8 |
+| P29 | reversals by a non-leader are always rejected with `NOT_A_LEADER` | 4.12 |
+| P30 | command ledgers produce no `DEPOSIT_WITHOUT_REQUEST`; a forged confirmation (no request, wrong member or amount, double confirmation, self-confirmed) gets it flagged | 12.10 |
 
 ### 11.2 Requirement coverage
 
@@ -495,15 +506,15 @@ Ledgers are generated as random `Command` sequences run through `executeAll`, ke
 | R1 Money | 0, 1, MAX, MAX+1, 1.5, NaN, `"5000"` | P1, P2 | – | – |
 | R2 Groups | one case per out-of-range rule | P3 | groups append-only trigger | – |
 | R3 Members | each phone format; `NOT_A_LEADER`; suspended member | P4, P5, P19 | phone unique → `PHONE_ALREADY_REGISTERED`; no PIN column (3.8) | – |
-| R4 Entries | each `INVALID_REVERSAL` case; `OUT_OF_ORDER` | P6, P12 | shape check rejects wrong columns per type | – |
+| R4 Entries | each `INVALID_REVERSAL` case; `OUT_OF_ORDER`; non-leader reversal | P6, P12, P29 | shape check rejects wrong columns per type; `ghost_app` can't insert `seed` rows (4.13) | – |
 | R5 Hash | golden vector | P6, P7 | – | – |
 | R6 Verify | one example per failure reason; 10,000 entries under 2 s | P8, P9 | verify after read-back | – |
 | R7 Balances | hand-computed small ledger | P10–P13 | – | – |
 | R8 Invariants | `NEGATIVE_BALANCE` names the balance | P14, P15 | – | – |
-| R9 Deposits | `BELOW_MIN_DEPOSIT` | P16 | – | – |
+| R9 Deposits | `BELOW_MIN_DEPOSIT`; `INVALID_DEPOSIT_STATE`; self-confirmation | P16, P28 | – | – |
 | R10 Loans | each error code; approve+disburse batch | P17–P20 | 10.17 two-entry atomic append; rollback on second failure | – |
 | R11 Repayments | repaid status; `EXCEEDS_OUTSTANDING` includes the amount | P21, P22 | – | – |
-| R12 Anomalies | one example per rule; explanation text | P9, P23, P24 | – | – |
+| R12 Anomalies | one example per rule; explanation text | P9, P23, P24, P30 | – | – |
 | R13 Persistence | writer maps errors and retries (fake `Db`); no `pg_advisory_lock(` in source (§5.1) | P26 | 13.2, 13.3, 13.4, 13.6, 13.7, 13.8, 13.9, 13.12: privilege matrix and role behaviour (§6.4); writer runs as `ghost_app` | 13.5: 20 parallel appends over 10 connections as `ghost_app` → contiguous seq, verified chain |
 | R14 Seed | env guards (14.10); Auth step with fake `AuthAdmin` (14.11) | P25 | seed into PGlite; second run refused (14.9) | – |
 | R15 Tamper | `ALLOW_TAMPER_DEMO` guard; uses `ADMIN_DATABASE_URL` only | – | tamper → `HASH_MISMATCH` at seq; restore → verified; output text; refuses as `ghost_app` (15.6) | – |

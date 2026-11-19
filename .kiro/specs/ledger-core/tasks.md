@@ -144,6 +144,21 @@ A task is not complete if any of these fail, or if any test is skipped. Property
       - a burst at 21:59 to 22:30 doesn't count, because not all of its entries are out of hours;
       - overlapping windows merge into one anomaly.
 
+- [ ] 15a. Deposit request and confirmation; leader-only reversals; seed actors (task 15 review)
+  - Contents:
+    - entry format v2: types `DEPOSIT_REQUEST` and `DEPOSIT_CONFIRMATION` replace `DEPOSIT`; new hashed field `confirmsEntryId` (design §2.1); golden vectors recomputed by the standalone script;
+    - commands `requestDeposit` and `confirmDeposit` (replacing `deposit`); error `INVALID_DEPOSIT_STATE`; request status `pending`/`confirmed` in the state;
+    - `reverseEntry` requires a leader (R4.12);
+    - R4.10: `seed` entries may carry an actor;
+    - anomaly rule `DEPOSIT_WITHOUT_REQUEST` (R12.10);
+    - arbitraries, fixtures and existing tests moved to request+confirm;
+    - mutation check: new mutants for each new rule; `scripts/mutation-check.mjs` (dev only, runs on a temporary copy) and `docs/MUTATION-CHECK.md`.
+  - Covers: 4.1, 4.3, 4.4, 4.10, 4.12, 9.1–9.8, 12.10.
+  - Tests:
+    - P16 (updated), P28, P29, P30.
+    - Examples: request changes nothing; confirmation credits; `SELF_APPROVAL`; `NOT_A_LEADER` for confirm, dashboard request and reversal; `INVALID_DEPOSIT_STATE` for unknown and already-confirmed requests; reversing a confirmation leaves the request consumed; each `DEPOSIT_WITHOUT_REQUEST` case with its explanation sentence.
+  - Done when: the Definition of Done passes and every new mutant is caught by its property test.
+
 ## Phase 2: Database
 
 - [ ] 16. Schema migration and PGlite harness
@@ -155,7 +170,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Tests (PGlite):
     - tables and uniques exist: `(group_id, seq)`, the idempotency key, `phone`;
     - the shape check rejects the wrong columns for a type;
-    - CHECK constraints mirror the TS entry schema exactly: `char_length(reason) between 1 and 120`, `char_length(idempotency_key) between 1 and 128`, no NUL (Postgres `text` rejects it already; the test proves it), lowercase UUIDs, and actor vs channel (R4.10: `ussd` actor = subject, `dashboard` actor present, `seed`/`system` actor null);
+    - CHECK constraints mirror the TS entry schema exactly: `char_length(reason) between 1 and 120`, `char_length(idempotency_key) between 1 and 128`, no NUL (Postgres `text` rejects it already; the test proves it), lowercase UUIDs, and actor vs channel (R4.10: `ussd` actor = subject, `dashboard` actor present, `seed` actor optional, `system` actor null); the shape check covers `DEPOSIT_REQUEST` and `DEPOSIT_CONFIRMATION` (`confirms_entry_id` only on confirmations);
     - a sub-millisecond `occurred_at` is rejected;
     - `members` has no PIN or balance columns.
     - A test asserts that no runtime file imports `@electric-sql/pglite`.
@@ -174,7 +189,9 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Tests (PGlite), all from design §6.4:
     - the privilege matrix, which fails on any undeclared table;
     - behaviour as `ghost_app`, `ghost_readonly` and `anon`;
-    - `ALTER TABLE … DISABLE TRIGGER` as `ghost_app` fails with `must be owner`.
+    - `ALTER TABLE … DISABLE TRIGGER` as `ghost_app` fails with `must be owner`;
+    - a `seed`-channel insert as `ghost_app` is rejected by the insert policy, and succeeds as the owner (R4.13).
+  - Covers (added): 4.13.
   - Unit test: the roles-login statement escapes the password and never logs it.
 
 - [ ] 19. `Db` adapters, env parsing and entry reads
@@ -199,7 +216,8 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Covers: 3.7, 3.8, 10.17, 13.5 (logic), 13.6, 13.7.
   - Tests:
     - PGlite as `ghost_app`:
-      - deposit, request, approve+disburse and repay end to end;
+      - deposit request+confirm, loan request, approve+disburse and repay end to end;
+      - `execute` accepts only the `ussd` and `dashboard` channels (type-level and runtime check, R4.13);
       - reusing an idempotency key returns the same entries;
       - a domain error inserts nothing;
       - a duplicate phone gives `PHONE_ALREADY_REGISTERED`;
