@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   extractSavedPath,
@@ -123,11 +126,20 @@ describe("parseArgs and fillCommand", () => {
 
 describe("CLI", () => {
   it("prints the relative path from a STDIN event", () => {
-    const result = spawnSync(process.execPath, ["scripts/hooks/saved-file.mjs"], {
-      input: JSON.stringify({ cwd: process.cwd(), file_path: `${process.cwd()}/src/domain/x.ts` }),
-      encoding: "utf8",
-    });
-    expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe("src/domain/x.ts");
+    const dir = mkdtempSync(join(tmpdir(), "saved-file-test-"));
+    const log = join(dir, "payload.json");
+    const input = JSON.stringify({ cwd: process.cwd(), file_path: `${process.cwd()}/src/domain/x.ts` });
+    try {
+      const result = spawnSync(process.execPath, ["scripts/hooks/saved-file.mjs"], {
+        input,
+        encoding: "utf8",
+        env: { ...process.env, GHOST_LEDGER_HOOK_LOG: log },
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe("src/domain/x.ts");
+      expect(readFileSync(log, "utf8")).toBe(input);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -21,7 +21,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const PAYLOAD_LOG = join(tmpdir(), "ghost-ledger-last-hook-payload.json");
+// Tests override the location so they never overwrite a real captured payload.
+export const PAYLOAD_LOG =
+  process.env.GHOST_LEDGER_HOOK_LOG ?? join(tmpdir(), "ghost-ledger-last-hook-payload.json");
 
 /** Candidate locations of the saved path in the event JSON, most likely first. */
 const CANDIDATE_KEYS = [
