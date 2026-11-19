@@ -49,3 +49,5 @@ export type {
   Uuid,
 } from "./entry";
 export { CANONICAL_FIELDS, ENTRY_FORMAT_TAG, GENESIS_HASH, canonicalize, hashEntry } from "./canonical";
+export { seal, verifyChain } from "./chain";
+export type { ChainHead, VerifyFailureReason, VerifyResult } from "./chain";

@@ -8,6 +8,7 @@ import {
   addCalendarMonths,
   hashEntry,
   kampalaDate,
+  seal,
   type EntryDraft,
   type LedgerEntry,
   type UnhashedEntry,
@@ -113,3 +114,25 @@ export const ledgerEntryArb: fc.Arbitrary<LedgerEntry> = fc
     const unhashed = { ...draft, seq, prevHash } as UnhashedEntry;
     return { ...unhashed, hash: hashEntry(unhashed) } as LedgerEntry;
   });
+
+/** Seals drafts one after another into a chain starting at the genesis hash. */
+export function sealAll(drafts: readonly EntryDraft[]): LedgerEntry[] {
+  const chain: LedgerEntry[] = [];
+  for (const draft of drafts) {
+    const head = chain.at(-1);
+    chain.push(seal(draft, head ? { seq: head.seq, hash: head.hash } : null));
+  }
+  return chain;
+}
+
+/**
+ * A correctly sealed chain for one group: seq 1..n, each prevHash linking to
+ * the previous hash, starting from the genesis hash. Business rules are not
+ * applied (a generic chain for hashing and verification tests).
+ */
+export function sealedChainArb(opts: { minLength?: number; maxLength?: number } = {}) {
+  const { minLength = 0, maxLength = 20 } = opts;
+  return uuidArb.chain((groupId) =>
+    fc.array(entryDraftArb(groupId), { minLength, maxLength }).map(sealAll),
+  );
+}

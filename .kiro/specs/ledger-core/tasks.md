@@ -74,7 +74,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - P7.
     - Examples: uppercase UUID rejected; absent fields serialize as `null`.
 
-- [ ] 7. `chain.ts`: `seal` and `verifyChain` (no checkpoints yet)
+- [x] 7. `chain.ts`: `seal` and `verifyChain` (no checkpoints yet)
   - Covers: 5.3, 5.4, 6.1–6.9.
   - Tests:
     - P8, P9 (`verifyChain`), using a generic sealed-chain arbitrary.
