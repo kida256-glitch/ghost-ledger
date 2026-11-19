@@ -56,7 +56,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - P1, P2.
     - Examples: 0, 1, MAX, MAX+1, 1.5, NaN, `"5000"`, `formatUgx(5000) === "UGX 5,000"`.
 
-- [ ] 5. `time.ts`
+- [x] 5. `time.ts`
   - Contents: `IsoTimestamp` validation (exact `YYYY-MM-DDTHH:mm:ss.sssZ`), `kampalaDate`, `kampalaHour`, `addCalendarMonths` (clamped), `kampalaDaysBetween`.
   - Covers: 10.10 (date maths), groundwork for 11.6 and 12.6.
   - Tests:
