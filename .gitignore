@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Environment files: never commit secrets. The template is kept.
+.env*
+!.env.example
+
+# Build and test output
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+next-env.d.ts
+
+# Platform
+.vercel/
+supabase/.temp/
+.DS_Store
+Thumbs.db
+
+# Note: .kiro/ is part of the project and must be committed. Do not ignore it.
