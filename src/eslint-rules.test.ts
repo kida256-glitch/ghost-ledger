@@ -62,6 +62,25 @@ describe("domain import restrictions (tech.md rule 1)", () => {
     );
   });
 
+  it("lets domain tests and src/domain/testing use vitest and fast-check, nothing else", async () => {
+    const code = 'import fc from "fast-check";\nimport { it } from "vitest";\nexport const s = [fc, it];\n';
+    expect(ruleIds(await lint(code, "src/domain/x.test.ts"))).not.toContain("no-restricted-imports");
+    expect(ruleIds(await lint(code, "src/domain/testing/arbitraries.ts"))).not.toContain(
+      "no-restricted-imports",
+    );
+    expect(ruleIds(await lint(code, "src/domain/x.ts"))).toContain("no-restricted-imports");
+
+    const pg = 'import pg from "pg";\nexport const p = pg;\n';
+    expect(ruleIds(await lint(pg, "src/domain/x.property.test.ts"))).toContain("no-restricted-imports");
+    const escape = 'import { a } from "../db/a";\nexport const s = a;\n';
+    expect(ruleIds(await lint(escape, "src/domain/x.test.ts"))).toContain("no-restricted-imports");
+  });
+
+  it("stops runtime domain code from importing src/domain/testing", async () => {
+    const code = 'import { a } from "./testing/arbitraries";\nexport const s = a;\n';
+    expect(ruleIds(await lint(code, "src/domain/x.ts"))).toContain("no-restricted-imports");
+  });
+
   it("does not restrict code outside src/domain", async () => {
     const code = 'import pg from "pg";\nexport const p = pg;\n';
     expect(ruleIds(await lint(code, "src/db/x.ts"))).not.toContain("no-restricted-imports");

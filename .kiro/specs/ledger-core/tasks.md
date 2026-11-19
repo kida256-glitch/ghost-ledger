@@ -49,7 +49,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
 
 ## Phase 1: Pure domain
 
-- [ ] 4. `result.ts`, `errors.ts`, `money.ts`
+- [x] 4. `result.ts`, `errors.ts`, `money.ts`
   - Contents: `Result`/`ok`/`err`, the `DomainError` union (all codes in the requirements), `MAX_ENTRY_AMOUNT`, `parseUgx`, `computeInterest`, `formatUgx`.
   - Covers: 1.1–1.4.
   - Tests:
