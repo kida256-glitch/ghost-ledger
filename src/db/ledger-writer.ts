@@ -81,7 +81,7 @@ export function createLedgerWriter(db: Db, deps: WriterDeps): LedgerWriter {
       if (key !== undefined) {
         const keys = commands.map((_, i) => `${key}:${i}`);
         const existing = await tx.query<Record<string, unknown>>(
-          `${ENTRY_SELECT} where group_id = $1 and idempotency_key = any($2::text[]) order by ledger_entries.seq`,
+          `${ENTRY_SELECT} where group_id = $1 and idempotency_key = any($2::text[]) order by seq`,
           [groupId, keys],
         );
         if (existing.rows.length > 0) return ok(existing.rows.map(entryFromRow));
@@ -91,7 +91,7 @@ export function createLedgerWriter(db: Db, deps: WriterDeps): LedgerWriter {
       const groupRow = (await tx.query<Record<string, unknown>>(`${GROUP_SELECT} where id = $1`, [groupId])).rows[0];
       if (!groupRow) return err<WriteError>({ code: "GROUP_NOT_FOUND" });
       const members = (await tx.query<Record<string, unknown>>(`${MEMBER_SELECT} where group_id = $1`, [groupId])).rows.map(memberFromRow);
-      const stored = (await tx.query<Record<string, unknown>>(`${ENTRY_SELECT} where group_id = $1 order by ledger_entries.seq`, [groupId])).rows.map(entryFromRow);
+      const stored = (await tx.query<Record<string, unknown>>(`${ENTRY_SELECT} where group_id = $1 order by seq`, [groupId])).rows.map(entryFromRow);
       const state = replay(groupFromRow(groupRow), members, stored);
 
       // 4. Read the clock only now, after the lock, and never go behind the head (design §2.3).

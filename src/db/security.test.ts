@@ -27,8 +27,8 @@ afterAll(async () => {
 
 /** The next valid entry for GROUP, built by the domain on top of what's stored. */
 async function nextEntries(build: (l: Ledger) => void): Promise<LedgerEntry[]> {
-  const r = await db.query<{ seq: number; hash: string; occurred_at: string }>(
-    "select seq::int as seq, hash, to_char(occurred_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') as occurred_at from ledger_entries where group_id = $1 order by seq desc limit 1",
+  const r = await db.query<{ seq: number; hash: string; occurred_at_text: string }>(
+    "select seq::int as seq, hash, to_char(occurred_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') as occurred_at_text from ledger_entries where group_id = $1 order by seq desc limit 1",
     [GROUP.id],
   );
   const head = r.rows[0];
@@ -43,7 +43,7 @@ async function nextEntries(build: (l: Ledger) => void): Promise<LedgerEntry[]> {
     void _s;
     void _p;
     void _h;
-    const later = new Date(Date.parse(head?.occurred_at ?? e.occurredAt) + 60_000 * (out.length + 1)).toISOString();
+    const later = new Date(Date.parse(head?.occurred_at_text ?? e.occurredAt) + 60_000 * (out.length + 1)).toISOString();
     const sealed = seal({ ...draft, occurredAt: later } as never, prev);
     out.push(sealed);
     prev = { seq: sealed.seq, hash: sealed.hash };

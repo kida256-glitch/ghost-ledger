@@ -123,8 +123,8 @@ describe("task 19: entries round-trip exactly as hashed (design §2.3)", () => {
   });
 
   it("a stored row that no longer matches the schema fails loudly", () => {
-    expect(() => entryFromRow({ id: "x", seq: "1", prev_hash: GENESIS_HASH })).toThrow(RowMappingError);
-    expect(() => entryFromRow({ id: "x", seq: "9007199254740993" })).toThrow();
+    expect(() => entryFromRow({ id: "x", seq_text: "1", prev_hash: GENESIS_HASH })).toThrow(RowMappingError);
+    expect(() => entryFromRow({ id: "x", seq_text: "9007199254740993" })).toThrow();
   });
 });
 
@@ -187,6 +187,28 @@ describe("task 19: pooler safety by source inspection (design §5.1)", () => {
     const sessionLock = new RegExp("pg_advisory_lock" + "\\(");
     const hits = [...files(join(root, "src")), ...files(join(root, "supabase"))].filter((p) => sessionLock.test(readFileSync(p, "utf8")));
     expect(hits.map((p) => relative(root, p))).toEqual([]);
+  });
+
+  it("guard: no query aliases a number, date or timestamp column's text form back to the column's own name", () => {
+    // seq::text as seq once made `order by seq` sort as text ("10" before "2").
+    // Column names and types come from the migrations, so new columns are covered too.
+    const migrations = files(join(root, "supabase", "migrations")).map((p) => readFileSync(p, "utf8")).join("\n");
+    const typed = /^\s+([a-z_]+)\s+(?:bigint|integer|int|smallint|numeric|date|timestamptz|timestamp)\b/gm;
+    const columns = new Set([...migrations.matchAll(typed)].map((m) => m[1] as string));
+    expect([...columns]).toEqual(expect.arrayContaining(["seq", "amount", "occurred_at", "due_date", "registered_at", "locked_until"]));
+
+    // A text-producing expression (::text, ::varchar or to_char(...)) followed by `as <name>`.
+    const textAlias = /(?:::\s*(?:text|varchar)\b|to_char\((?:[^()]|\([^()]*\))*\))\s+as\s+"?([a-z_]+)"?/gi;
+    const offenders = (src: string) => [...src.matchAll(textAlias)].map((m) => (m[1] as string).toLowerCase()).filter((a) => columns.has(a));
+
+    // The guard must catch the original bug and its to_char variant.
+    expect(offenders("select seq::text as seq from ledger_entries order by seq")).toEqual(["seq"]);
+    expect(offenders(`select to_char(occurred_at at time zone 'UTC', 'YYYY') as occurred_at`)).toEqual(["occurred_at"]);
+    expect(offenders("select seq::text as seq_text, count(*)::int as c")).toEqual([]);
+
+    const scanned = [...files(join(root, "src")), ...files(join(root, "scripts")), ...files(join(root, "supabase"))].filter((p) => /\.(ts|mjs|cjs|sql)$/.test(p) && p !== join(root, "src", "db", "rows.test.ts")); // this file holds the bad examples above
+    const hits = scanned.flatMap((p) => offenders(readFileSync(p, "utf8")).map((a) => `${relative(root, p)}: ${a}`));
+    expect(hits).toEqual([]);
   });
 
   it("no named prepared statements (a `name` in a query config) in runtime database code", () => {

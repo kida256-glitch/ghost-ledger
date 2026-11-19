@@ -29,6 +29,6 @@ export async function insertEntry(db: PGlite, e: LedgerEntry, override: Partial<
 
 /** Reads a group's entries back with the representation the hash uses (design §2.3). */
 export async function readEntries(db: PGlite, groupId: string): Promise<LedgerEntry[]> {
-  const r = await db.query<Record<string, unknown>>(`${ENTRY_SELECT} where group_id = $1 order by ledger_entries.seq`, [groupId]);
+  const r = await db.query<Record<string, unknown>>(`${ENTRY_SELECT} where group_id = $1 order by seq`, [groupId]);
   return r.rows.map(entryFromRow);
 }
