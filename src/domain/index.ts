@@ -22,6 +22,7 @@ export {
   CHANNELS,
   ENTRY_TYPES,
   MONEY_ENTRY_TYPES,
+  actorMatchesChannel,
   hashSchema,
   idempotencyKeySchema,
   isMoneyEntryType,

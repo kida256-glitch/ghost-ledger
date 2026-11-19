@@ -12,6 +12,8 @@ export type DomainError =
   | { readonly code: "INVALID_PHONE" } // 3.6
   | { readonly code: "PHONE_ALREADY_REGISTERED" } // 3.7
   | { readonly code: "MEMBER_SUSPENDED" } // 3.9
+  | { readonly code: "MEMBER_NOT_FOUND" } // 3.10
+  | { readonly code: "INVALID_REASON" } // 4.11
   | { readonly code: "INVALID_REVERSAL" } // 4.7, 4.8
   | { readonly code: "OUT_OF_ORDER" } // 4.9
   | { readonly code: "NEGATIVE_BALANCE"; readonly balance: BalanceName } // 8.2

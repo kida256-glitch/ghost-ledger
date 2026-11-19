@@ -159,7 +159,8 @@ const variant = <T extends EntryType, S extends Partial<Record<keyof typeof abse
  * Validates a complete entry: lowercase UUIDs, exact timestamp form, and the
  * per-type field rules of R4.3 and R4.4. Unknown keys are rejected.
  */
-export const ledgerEntrySchema = z.discriminatedUnion("type", [
+export const ledgerEntrySchema = z
+  .discriminatedUnion("type", [
   variant("DEPOSIT", { amount: amountSchema }),
   variant("SOCIAL_FUND_CONTRIBUTION", { amount: amountSchema }),
   variant("LOAN_REQUEST", { amount: amountSchema, loanId: uuidSchema, termMonths: termSchema }),
@@ -174,7 +175,27 @@ export const ledgerEntrySchema = z.discriminatedUnion("type", [
   }),
   variant("LOAN_REPAYMENT", { amount: amountSchema, loanId: uuidSchema }),
   variant("REVERSAL", { amount: amountSchema, reversesEntryId: uuidSchema, reason: reasonSchema }),
-]);
+  ])
+  .refine((e) => actorMatchesChannel(e.channel, e.actorMemberId, e.subjectMemberId), {
+    message: "actor does not match channel (R4.10)",
+    path: ["actorMemberId"],
+  });
+
+/**
+ * R4.10: `ussd` entries are recorded by the subject member themselves,
+ * `dashboard` entries by a named actor, `seed` and `system` entries by no one.
+ */
+export function actorMatchesChannel(channel: Channel, actor: Uuid | null, subject: Uuid): boolean {
+  switch (channel) {
+    case "ussd":
+      return actor === subject;
+    case "dashboard":
+      return actor !== null;
+    case "seed":
+    case "system":
+      return actor === null;
+  }
+}
 
 // Compile-time check that the schema and the hand-written union agree.
 type SchemaEntry = z.infer<typeof ledgerEntrySchema>;

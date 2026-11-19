@@ -47,8 +47,8 @@ const GOLDEN_REVERSAL: UnhashedEntry = {
   subjectMemberId: "5a7c9e1b-3d5f-4a6c-8e0b-2d4f6a8c0e1b",
   actorMemberId: "9c8b7a6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
   occurredAt: "2026-03-14T07:05:09.043Z",
-  channel: "ussd",
-  idempotencyKey: "ussd-ATU-77:0",
+  channel: "dashboard",
+  idempotencyKey: "dash-ATU-77:0",
   amount: 5_000,
   loanId: null,
   termMonths: null,
@@ -58,7 +58,9 @@ const GOLDEN_REVERSAL: UnhashedEntry = {
   reason: 'Ensobi "double" entry \u2014 \u00e9\u{1F4B0}',
   prevHash: GENESIS_HASH,
 };
-const GOLDEN_REVERSAL_HASH = "0d21ab410bc82a306c20137cc9bf932e8482c2febd17535d15c89a63aebcc4ac";
+// Vector data changed at the task 7 review (ussd → dashboard, for R4.10).
+// The format itself is unchanged.
+const GOLDEN_REVERSAL_HASH = "f520e853eddc864fc24feecbe2e48221cbb8a9dfb3fc7f307030906bb490e410";
 
 describe("golden vectors (R5.1)", () => {
   it("pins the canonical string and hash of a fixed disbursement", () => {

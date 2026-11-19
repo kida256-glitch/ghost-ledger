@@ -37,15 +37,21 @@ export const idempotencyKeyArb = fc
  * (those use command-sequence arbitraries from task 9 on).
  */
 export function entryDraftArb(groupId?: Uuid): fc.Arbitrary<EntryDraft> {
-  const common = fc.record({
-    id: uuidArb,
-    groupId: groupId === undefined ? uuidArb : fc.constant(groupId),
-    subjectMemberId: uuidArb,
-    actorMemberId: fc.option(uuidArb, { nil: null }),
-    occurredAt: timestampArb,
-    channel: fc.constantFrom(...CHANNELS),
-    idempotencyKey: fc.option(idempotencyKeyArb, { nil: null }),
-  });
+  const common = fc
+    .record({
+      id: uuidArb,
+      groupId: groupId === undefined ? uuidArb : fc.constant(groupId),
+      subjectMemberId: uuidArb,
+      otherActor: uuidArb,
+      occurredAt: timestampArb,
+      channel: fc.constantFrom(...CHANNELS),
+      idempotencyKey: fc.option(idempotencyKeyArb, { nil: null }),
+    })
+    .map(({ otherActor, ...c }) => ({
+      ...c,
+      // R4.10: actor follows the channel.
+      actorMemberId: c.channel === "ussd" ? c.subjectMemberId : c.channel === "dashboard" ? otherActor : null,
+    }));
   const none = {
     amount: null,
     loanId: null,

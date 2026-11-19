@@ -76,6 +76,26 @@ describe("ledgerEntrySchema", () => {
     expect(parses(value)).toBe(false);
   });
 
+  describe("R4.10 actor vs channel", () => {
+    const actor = "9c8b7a6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
+    const subject = deposit.subjectMemberId;
+    const rehash = (e: Record<string, unknown>) => ({ ...e, hash: "0".repeat(64) });
+    it.each([
+      ["ussd", subject, true],
+      ["ussd", actor, false],
+      ["ussd", null, false],
+      ["dashboard", actor, true],
+      ["dashboard", subject, true],
+      ["dashboard", null, false],
+      ["seed", null, true],
+      ["seed", actor, false],
+      ["system", null, true],
+      ["system", actor, false],
+    ] as const)("%s with actor %s is valid: %s", (channel, actorMemberId, expected) => {
+      expect(parses(rehash({ ...valid, channel, actorMemberId }))).toBe(expected);
+    });
+  });
+
   it("counts reason length in code points, not UTF-16 units", () => {
     const reversal = { ...valid, type: "REVERSAL", reversesEntryId: deposit.id, reason: "\u{1F4B0}".repeat(120) };
     expect(parses(reversal)).toBe(true);
