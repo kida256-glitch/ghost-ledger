@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "kiro-usage-reminder",
+      "description": "Reminds the user to log Kiro usage when a spec task list changes.",
+      "trigger": "PostFileSave",
+      "matcher": "\\.kiro[\\\\/]specs[\\\\/][^\\\\/]+[\\\\/]tasks\\.md$",
+      "action": {
+        "type": "agent",
+        "prompt": "A spec tasks.md file was just saved. In one short sentence, remind the user to update KIRO_USAGE.md with the Kiro features used for the task(s) just worked on and what did or didn't work. Do not edit any files."
+      }
+    }
+  ]
+}

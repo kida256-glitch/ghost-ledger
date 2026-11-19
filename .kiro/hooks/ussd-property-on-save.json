@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "ussd-property-on-save",
+      "description": "Runs the USSD output-shape property test (testing.md property 6). ussd-engine adds the test and removes --passWithNoTests.",
+      "trigger": "PostFileSave",
+      "matcher": "src[\\\\/]ussd[\\\\/]",
+      "action": {
+        "type": "command",
+        "command": "npx vitest run src/ussd --testNamePattern \"R.*USSD property\" --passWithNoTests"
+      },
+      "timeout": 180
+    }
+  ]
+}

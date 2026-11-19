@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "typecheck-lint-on-save",
+      "description": "Typechecks the project, then lints the saved TypeScript file.",
+      "trigger": "PostFileSave",
+      "matcher": "\\.(ts|tsx)$",
+      "action": {
+        "type": "command",
+        "command": "node scripts/hooks/saved-file.mjs --file \"{{filePath}}\" run \"npm run typecheck\" \"npx eslint {file}\""
+      },
+      "timeout": 180
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "domain-tests-on-save",
+      "description": "Runs the example and fast-check tests related to a saved domain file (testing.md).",
+      "trigger": "PostFileSave",
+      "matcher": "src[\\\\/]domain[\\\\/].*\\.ts$",
+      "action": {
+        "type": "command",
+        "command": "node scripts/hooks/saved-file.mjs --file \"{{filePath}}\" run \"npx vitest related {file} --run\""
+      },
+      "timeout": 180
+    }
+  ]
+}
