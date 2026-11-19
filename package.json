@@ -21,7 +21,9 @@
     "build": "next build",
     "mutation:check": "node scripts/mutation-check.mjs",
     "db:roles-login": "node scripts/db-roles-login.ts",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "demo:tamper": "tsx scripts/demo-tamper.ts",
+    "demo:restore": "tsx scripts/demo-restore.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.2",

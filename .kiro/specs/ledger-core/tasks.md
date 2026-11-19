@@ -255,7 +255,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Update `.env.example`.
   - Done when: the Definition of Done passes. **Optional user check:** run the seed against local Supabase.
 
-- [ ] 24. Tamper and restore scripts
+- [x] 24. Tamper and restore scripts
   - Contents: `npm run demo:tamper` and `npm run demo:restore`, using `ADMIN_DATABASE_URL` only, with an owner check.
   - Covers: 15.1–15.6.
   - Tests (PGlite):
