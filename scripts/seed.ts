@@ -1,8 +1,18 @@
 // npm run db:seed [-- --anchor YYYY-MM-DD]
 //
 // Inserts the demo group (R14, design §9) as the table owner through
-// ADMIN_DATABASE_URL, and creates the two demo leader logins in Supabase Auth.
-// The Supabase service-role key is read here and nowhere else.
+// ADMIN_DATABASE_URL. Every ledger, member and group row goes in over that
+// connection.
+//
+// The Supabase service-role key is used for one thing only: creating the two
+// demo leader logins through the Auth admin API. It is read from the shell
+// environment of whoever runs the script (tsx loads no .env files), and the
+// script refuses if a local .env file defines it, because `next dev` would
+// load it into the app. It is never set on Vercel and never committed.
+//
+// This script deliberately does not use src/lib/env.ts: appEnv() refuses to
+// start when the key is present, and that check is for the app, not for us.
+import { readdirSync, readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import pg from "pg";
 import { z } from "zod";
@@ -25,17 +35,34 @@ export const DEMO_ACCOUNTS = [
 const envSchema = z.object({
   ADMIN_DATABASE_URL: z.string().url().refine((u) => /^postgres(ql)?:\/\//.test(u), "must be a postgres:// URL"),
   NODE_ENV: z.string().optional().refine((v) => v !== "production", "the seed never runs in production"),
+  VERCEL: z.undefined({ error: "the seed never runs on Vercel" }).optional(),
   DEMO_LEADER_PASSWORD: z.string().min(12, "must be at least 12 characters"),
+  SUPABASE_URL: z.string().url().refine((u) => /^https?:\/\//.test(u), "must be an http(s) URL"),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(20, "must be the project's service-role (secret) key"),
 });
 
 export type SeedEnv = z.infer<typeof envSchema>;
 
-/** R14.10: refuses without the owner connection, in production, or without the demo password. Names variables, never values. */
+/**
+ * R14.10: refuses without the owner connection, in production or on Vercel,
+ * without the demo password, or without the Auth admin URL and key. Names
+ * variables, never values.
+ */
 export function checkSeedEnv(env: Record<string, string | undefined>): { ok: true; value: SeedEnv } | { ok: false; error: string } {
   const cleaned = Object.fromEntries(Object.entries(env).filter(([, v]) => v !== undefined && v !== ""));
   const r = envSchema.safeParse(cleaned);
   if (r.success) return { ok: true, value: r.data };
   return { ok: false, error: r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") };
+}
+
+/**
+ * Local .env files (other than the template) that assign the service-role key.
+ * Next.js loads these into the app, so the seed refuses while any exists.
+ */
+export function envFilesWithServiceKey(dir: string): string[] {
+  return readdirSync(dir)
+    .filter((f) => /^\.env(\..+)?$/.test(f) && f !== ".env.example")
+    .filter((f) => /^\s*(export\s+)?SUPABASE_SERVICE_ROLE_KEY\s*=\s*\S/m.test(readFileSync(`${dir}/${f}`, "utf8")));
 }
 
 export type SeedOutcome = { ok: true; entries: number; members: number } | { ok: false; reason: string };
@@ -99,17 +126,16 @@ async function main() {
     console.error(`db:seed refused: ${env.error}`);
     process.exit(1);
   }
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    console.error("db:seed refused: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required to create the demo logins");
+  const leaked = envFilesWithServiceKey(process.cwd());
+  if (leaked.length > 0) {
+    console.error(`db:seed refused: remove SUPABASE_SERVICE_ROLE_KEY from ${leaked.join(", ")} and set it in this shell only (see DEMO.md)`);
     process.exit(1);
   }
   const i = process.argv.indexOf("--anchor");
   const anchor = i === -1 ? kampalaDate(new Date().toISOString()) : (process.argv[i + 1] ?? "");
   const pool = new pg.Pool({ connectionString: env.value.ADMIN_DATABASE_URL, max: 1 });
   try {
-    const outcome = await runSeed({ db: fromPgPool(pool), auth: supabaseAuthAdmin(url, key), anchor, password: env.value.DEMO_LEADER_PASSWORD, log: console.log });
+    const outcome = await runSeed({ db: fromPgPool(pool), auth: supabaseAuthAdmin(env.value.SUPABASE_URL, env.value.SUPABASE_SERVICE_ROLE_KEY), anchor, password: env.value.DEMO_LEADER_PASSWORD, log: console.log });
     if (!outcome.ok) {
       console.error(`db:seed: ${outcome.reason}`);
       process.exitCode = 1;

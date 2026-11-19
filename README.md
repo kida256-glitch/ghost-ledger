@@ -14,7 +14,17 @@ _TBD_
 
 See `.env.example` for the full list.
 
-> **Never put `SUPABASE_SERVICE_ROLE_KEY` in the app's environment** (Vercel project settings or `.env.local` used by `next dev`). It bypasses Row Level Security and every grant. Only `npm run db:seed`, run from a developer machine, reads it. The app connects as `ghost_app` (`DATABASE_URL`), and the agent and MCP server connect as `ghost_readonly` (`READONLY_DATABASE_URL`).
+Which connection each part uses:
+
+| Who | Variable | Role |
+| --- | --- | --- |
+| App runtime (Next.js, Vercel) | `DATABASE_URL` | `ghost_app`, transaction pooler |
+| Agent and MCP server | `READONLY_DATABASE_URL` | `ghost_readonly` (SELECT only) |
+| Migrations, `db:roles-login`, `db:seed`, demo scripts | `ADMIN_DATABASE_URL` | table owner, direct connection |
+
+`npm run db:seed` inserts every group, member and ledger row through `ADMIN_DATABASE_URL`. It also needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, but only to create the two demo leader logins through the Supabase Auth admin API. Nothing else uses that key.
+
+> **The service-role key lives only in the shell that runs `db:seed`.** Set it with `$env:SUPABASE_SERVICE_ROLE_KEY = "..."` (see [DEMO.md](DEMO.md)), never in `.env`/`.env.local`, never in Vercel, never in git. It bypasses Row Level Security and every grant. The app's `appEnv()` refuses to start if the key is set. The seed script doesn't call `appEnv()`, so that check doesn't block it; instead the seed refuses if any local `.env*` file assigns the key (Next.js would load it into the app) or if it detects Vercel (`VERCEL`) or `NODE_ENV=production`.
 
 ## Running tests
 
