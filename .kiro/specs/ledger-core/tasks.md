@@ -239,7 +239,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
 
 ## Phase 3: Seed and demo
 
-- [ ] 22. Pure seed builder `src/seed/build-seed.ts`
+- [x] 22. Pure seed builder `src/seed/build-seed.ts`
   - Covers: 2.4, 14.1–14.8.
   - Tests:
     - P25, for any anchor date: chain verifies, exactly 1 overdue loan, exactly the 2 planted anomalies, deterministic.
