@@ -161,7 +161,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
 
 ## Phase 2: Database
 
-- [ ] 16. Schema migration and PGlite harness
+- [x] 16. Schema migration and PGlite harness
   - Contents:
     - `supabase/migrations/<ts>_ledger_core_schema.sql` (design §3, including `member_credentials`);
     - `src/db/testing/pglite.ts`, which creates a fresh in-memory database, applies the bootstrap stubs (`auth.users`, Supabase roles) and then every migration in filename order.
@@ -175,7 +175,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - `members` has no PIN or balance columns.
     - A test asserts that no runtime file imports `@electric-sql/pglite`.
 
-- [ ] 17. Trigger migration
+- [x] 17. Trigger migration
   - Contents: `gl_reject_mutation` on `ledger_entries` and `groups`; delete/truncate guards on `members` and `member_credentials`; `gl_check_chain_link` with the transaction-scoped advisory lock.
   - Covers: 2.3, 13.2, 13.3.
   - Tests (PGlite):
@@ -183,7 +183,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - a seq gap, a wrong `prev_hash`, a bad genesis entry and an earlier `occurred_at` are each rejected (`GL001`/`GL002`);
     - a valid chain inserts.
 
-- [ ] 18. Security migration and role logins
+- [x] 18. Security migration and role logins
   - Contents: `<ts>_ledger_core_security.sql` (design §6.3), and `npm run db:roles-login` (`scripts/db-roles-login.ts`, which uses `ADMIN_DATABASE_URL`, `APP_DB_PASSWORD` and `READONLY_DB_PASSWORD`).
   - Covers: 13.8, 13.9, 13.12.
   - Tests (PGlite), all from design §6.4:
