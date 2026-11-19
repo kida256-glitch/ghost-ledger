@@ -81,7 +81,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - One example per failure reason.
     - 10,000 entries verify in under 2 s.
 
-- [ ] 8. `group.ts` and `member.ts`
+- [x] 8. `group.ts` and `member.ts`
   - Contents: `createGroup`, `normalizePhone`, `validateDisplayName` (GSM-7), `registerMember`.
   - Covers: 2.1, 2.2, 3.1–3.6.
   - Tests:

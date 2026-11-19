@@ -51,4 +51,17 @@ export type {
 } from "./entry";
 export { CANONICAL_FIELDS, ENTRY_FORMAT_TAG, GENESIS_HASH, canonicalize, hashEntry } from "./canonical";
 export { seal, verifyChain } from "./chain";
+export { createGroup } from "./group";
+export type { Group, GroupRuleField } from "./group";
+export {
+  GSM7_BASIC,
+  LEADER_ROLES,
+  MEMBER_ROLES,
+  MEMBER_STATUSES,
+  isLeaderOf,
+  normalizePhone,
+  registerMember,
+  validateDisplayName,
+} from "./member";
+export type { Member, MemberRole, MemberStatus, Phone } from "./member";
 export type { ChainHead, VerifyFailureReason, VerifyResult } from "./chain";
