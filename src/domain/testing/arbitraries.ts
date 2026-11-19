@@ -7,10 +7,20 @@ import {
   MAX_ENTRY_AMOUNT,
   addCalendarMonths,
   hashEntry,
+  activeLoan,
+  execute,
   kampalaDate,
+  loanOutstanding,
+  replay,
   seal,
+  type Command,
+  type CommandContext,
   type EntryDraft,
+  type Group,
   type LedgerEntry,
+  type LedgerState,
+  type Member,
+  type MemberRole,
   type UnhashedEntry,
   type Uuid,
 } from "../index";
@@ -120,6 +130,240 @@ export const ledgerEntryArb: fc.Arbitrary<LedgerEntry> = fc
     const unhashed = { ...draft, seq, prevHash } as UnhashedEntry;
     return { ...unhashed, hash: hashEntry(unhashed) } as LedgerEntry;
   });
+
+// ---------------------------------------------------------------------------
+// Command-sequence ledgers (testing.md: generated ledgers come from running
+// random command sequences through the real domain commands).
+
+export const SCENARIO_GROUP_ID = "0b6e4d2c-1a3f-4e5d-8c7b-9a0f1e2d3c4b";
+export const SCENARIO_START = "2026-01-03T07:00:00.000Z";
+
+/** Deterministic id generator: lowercase UUID-shaped values from a counter. */
+export function idGenerator(prefix = "e0000000"): () => Uuid {
+  let n = 0;
+  return () => `${prefix}-0000-4000-8000-${(++n).toString(16).padStart(12, "0")}`;
+}
+
+export const memberId = (i: number): Uuid => `11111111-0000-4000-8000-${String(i).padStart(12, "0")}`;
+
+/** Group rules within the R2.2 ranges; small minimum deposits so deposits mostly succeed. */
+export const groupArb: fc.Arbitrary<Group> = fc
+  .record({
+    interestRateBps: fc.integer({ min: 0, max: 3_000 }),
+    loanMultiplier: fc.integer({ min: 1, max: 5 }),
+    maxTermMonths: fc.integer({ min: 1, max: 12 }),
+    minDeposit: fc.constantFrom(500, 1_000, 2_000, 5_000),
+  })
+  .map((rules) => ({
+    id: SCENARIO_GROUP_ID,
+    code: "TESTGRP",
+    name: "Test group",
+    ...rules,
+    cycleStart: "2026-01-03",
+    cycleEnd: "2026-12-31",
+    createdAt: SCENARIO_START,
+  }));
+
+/** 3 to 7 members. Members 0 and 1 are leaders; the rest have random roles and statuses. */
+export const membersArb: fc.Arbitrary<Member[]> = fc
+  .array(
+    fc.record({
+      role: fc.constantFrom<MemberRole>("member", "member", "member", "chair", "treasurer", "secretary"),
+      suspended: fc.integer({ min: 0, max: 9 }).map((n) => n === 0),
+    }),
+    { minLength: 1, maxLength: 5 },
+  )
+  .map((rest) =>
+    [{ role: "chair" as MemberRole, suspended: false }, { role: "treasurer" as MemberRole, suspended: false }, ...rest].map(
+      (m, i): Member => ({
+        id: memberId(i),
+        groupId: SCENARIO_GROUP_ID,
+        displayName: `Member ${i}`,
+        phone: `+2567${String(i).padStart(8, "0")}`,
+        role: m.role,
+        status: m.suspended ? "suspended" : "active",
+        registeredBy: i === 0 ? null : memberId(0),
+        registeredAt: SCENARIO_START,
+        authUserId: null,
+      }),
+    ),
+  );
+
+/** Amounts biased towards boundaries, with some invalid values. */
+const rawAmountArb = fc.oneof(
+  { weight: 6, arbitrary: fc.integer({ min: 500, max: 60_000 }) },
+  { weight: 1, arbitrary: fc.constantFrom(0, -1, 1, 499, 999, 1_999, 4_999, 1.5, 50_000_001) },
+);
+
+/** An intent picks members, loans and entries by index; it is resolved against the current state. */
+export type Intent =
+  | { kind: "deposit" | "contributeSocialFund"; member: number; amount: number; viaDashboard: boolean; leader: number }
+  | { kind: "requestLoan"; member: number; permille: number; termMonths: number; raw: number | null }
+  | { kind: "approveLoan" | "disburseLoan"; loan: number; actor: number }
+  | { kind: "rejectLoan"; loan: number; actor: number; reason: string }
+  | { kind: "repayLoan"; member: number; permille: number; raw: number | null }
+  | { kind: "reverseEntry"; entry: number; actor: number; reason: string }
+  | { kind: "unknownMember"; amount: number };
+
+const pick = fc.nat({ max: 1_000 });
+/** Loans are picked counting back from the newest, so recent requests move forward. */
+const recent = fc.nat({ max: 3 });
+/** null most of the time, otherwise a value from `arb`. */
+const rarely = <T>(arb: fc.Arbitrary<T>) =>
+  fc.oneof({ weight: 8, arbitrary: fc.constant(null) }, { weight: 1, arbitrary: arb });
+const shortReason = fc.oneof(fc.constantFrom("Wrong amount", "Duplicate", "Ensobi — é💰"), fc.constant(""));
+
+export const intentArb: fc.Arbitrary<Intent> = fc.oneof(
+  { weight: 6, arbitrary: fc.record({ kind: fc.constant("deposit" as const), member: pick, amount: rawAmountArb, viaDashboard: fc.boolean(), leader: pick }) },
+  { weight: 2, arbitrary: fc.record({ kind: fc.constant("contributeSocialFund" as const), member: pick, amount: rawAmountArb, viaDashboard: fc.boolean(), leader: pick }) },
+  {
+    weight: 4,
+    arbitrary: fc.record({
+      kind: fc.constant("requestLoan" as const),
+      member: pick,
+      permille: fc.integer({ min: 0, max: 1_300 }),
+      termMonths: fc.oneof({ weight: 6, arbitrary: fc.integer({ min: 1, max: 3 }) }, { weight: 1, arbitrary: fc.constantFrom(0, 12, 13, 2.5) }),
+      raw: rarely(fc.constantFrom(0, -5, 1.5, 50_000_001)),
+    }),
+  },
+  { weight: 8, arbitrary: fc.record({ kind: fc.constantFrom("approveLoan" as const, "disburseLoan" as const), loan: recent, actor: pick }) },
+  { weight: 1, arbitrary: fc.record({ kind: fc.constant("rejectLoan" as const), loan: recent, actor: pick, reason: shortReason }) },
+  {
+    weight: 4,
+    arbitrary: fc.record({
+      kind: fc.constant("repayLoan" as const),
+      member: pick,
+      permille: fc.integer({ min: 0, max: 1_200 }),
+      raw: rarely(fc.constantFrom(0, 1.5, 1)),
+    }),
+  },
+  { weight: 2, arbitrary: fc.record({ kind: fc.constant("reverseEntry" as const), entry: pick, actor: pick, reason: shortReason }) },
+  { weight: 1, arbitrary: fc.record({ kind: fc.constant("unknownMember" as const), amount: rawAmountArb }) },
+);
+
+export interface Step {
+  readonly command: Command;
+  readonly ctx: CommandContext;
+  readonly before: LedgerState;
+  readonly result: ReturnType<typeof execute>;
+}
+
+export interface Scenario {
+  readonly group: Group;
+  readonly members: readonly Member[];
+  readonly steps: readonly Step[];
+  /** Accepted entries, in seq order. */
+  readonly entries: readonly LedgerEntry[];
+  readonly state: LedgerState;
+}
+
+const at = <T>(xs: readonly T[], i: number): T | undefined => (xs.length === 0 ? undefined : xs[i % xs.length]);
+const UNKNOWN_LOAN = "ffffffff-0000-4000-8000-000000000001";
+const UNKNOWN_ENTRY = "ffffffff-0000-4000-8000-000000000002";
+const UNKNOWN_MEMBER = "ffffffff-0000-4000-8000-000000000003";
+
+/** Turns an intent into a concrete command and context for the current state. */
+export function resolveIntent(
+  intent: Intent,
+  state: LedgerState,
+  members: readonly Member[],
+  now: string,
+  newId: () => Uuid,
+): { command: Command; ctx: CommandContext } {
+  const member = (i: number) => (at(members, i) as Member).id;
+  const self = (id: Uuid): CommandContext => ({ now, newId, channel: "ussd", actorMemberId: id });
+  const dash = (id: Uuid): CommandContext => ({ now, newId, channel: "dashboard", actorMemberId: id });
+  const loanIds = [...state.loans.keys()].reverse();
+  switch (intent.kind) {
+    case "deposit":
+    case "contributeSocialFund": {
+      const id = member(intent.member);
+      return {
+        command: { kind: intent.kind, memberId: id, amount: intent.amount },
+        ctx: intent.viaDashboard ? dash(member(intent.leader)) : self(id),
+      };
+    }
+    case "requestLoan": {
+      const id = member(intent.member);
+      const principal = intent.raw ?? Math.floor((loanLimitOf(state, id) * intent.permille) / 1_000);
+      return { command: { kind: "requestLoan", memberId: id, principal, termMonths: intent.termMonths }, ctx: self(id) };
+    }
+    case "approveLoan":
+    case "disburseLoan":
+      return { command: { kind: intent.kind, loanId: at(loanIds, intent.loan) ?? UNKNOWN_LOAN }, ctx: dash(member(intent.actor)) };
+    case "rejectLoan":
+      return {
+        command: { kind: "rejectLoan", loanId: at(loanIds, intent.loan) ?? UNKNOWN_LOAN, reason: intent.reason },
+        ctx: dash(member(intent.actor)),
+      };
+    case "repayLoan": {
+      // Mostly a member who has an active loan, so repayments actually happen.
+      const borrowers = members.filter((m) => activeLoan(state, m.id) !== null);
+      const id = borrowers.length > 0 && intent.member % 4 !== 0 ? (at(borrowers, intent.member) as Member).id : member(intent.member);
+      const loan = activeLoan(state, id);
+      const outstanding = loan ? (loanOutstanding(loan) ?? 0) : 1_000;
+      const amount = intent.raw ?? Math.max(1, Math.floor((outstanding * intent.permille) / 1_000));
+      return { command: { kind: "repayLoan", memberId: id, amount }, ctx: self(id) };
+    }
+    case "reverseEntry": {
+      const entryIds = [...state.entries.keys()];
+      return {
+        command: { kind: "reverseEntry", entryId: at(entryIds, intent.entry) ?? UNKNOWN_ENTRY, reason: intent.reason },
+        ctx: dash(member(intent.actor)),
+      };
+    }
+    case "unknownMember":
+      return { command: { kind: "deposit", memberId: UNKNOWN_MEMBER, amount: intent.amount }, ctx: self(UNKNOWN_MEMBER) };
+  }
+}
+
+const loanLimitOf = (state: LedgerState, id: Uuid) => state.group.loanMultiplier * Math.max(0, state.savings.get(id) ?? 0);
+
+/** Runs intents through `execute`, keeping accepted entries. */
+export function runScenario(group: Group, members: readonly Member[], intents: readonly Intent[], gapsMinutes: readonly number[]): Scenario {
+  const newId = idGenerator();
+  let state = replay(group, members, []);
+  let ms = Date.parse(SCENARIO_START);
+  const steps: Step[] = [];
+  const entries: LedgerEntry[] = [];
+  intents.forEach((intent, i) => {
+    ms += (gapsMinutes[i % Math.max(1, gapsMinutes.length)] ?? 0) * 60_000;
+    const { command, ctx } = resolveIntent(intent, state, members, new Date(ms).toISOString(), newId);
+    const before = state;
+    const result = execute(state, command, ctx);
+    if (result.ok) {
+      state = result.value.state;
+      entries.push(result.value.entry);
+    }
+    steps.push({ command, ctx, before, result });
+  });
+  return { group, members, steps, entries, state };
+}
+
+/** A command-built ledger: random group, members and up to `maxSteps` intents. */
+export function scenarioArb(opts: { maxSteps?: number } = {}): fc.Arbitrary<Scenario> {
+  const { maxSteps = 40 } = opts;
+  return fc
+    .tuple(
+      groupArb,
+      membersArb,
+      fc.array(intentArb, { maxLength: maxSteps, size: "medium" }),
+      // Mostly hours apart, sometimes the same millisecond, sometimes weeks.
+      fc.array(fc.oneof(fc.constant(0), fc.integer({ min: 1, max: 600 }), fc.integer({ min: 1_440, max: 43_200 })), {
+        minLength: 1,
+        maxLength: 8,
+      }),
+    )
+    .chain(([group, members, intents, gaps]) =>
+      // Start with one savings round so that loans are possible early on.
+      fc.array(fc.integer({ min: group.minDeposit, max: 60_000 }), { minLength: members.length, maxLength: members.length }).map(
+        (amounts) => {
+          const warmup: Intent[] = amounts.map((amount, i) => ({ kind: "deposit", member: i, amount, viaDashboard: false, leader: 0 }));
+          return runScenario(group, members, [...warmup, ...intents], gaps);
+        },
+      ),
+    );
+}
 
 /** Seals drafts one after another into a chain starting at the genesis hash. */
 export function sealAll(drafts: readonly EntryDraft[]): LedgerEntry[] {

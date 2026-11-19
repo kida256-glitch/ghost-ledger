@@ -100,4 +100,11 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Property tests walk generated ledgers and assert per case (e.g. "for
+    // every accepted repayment …"), so conditional expects are the point.
+    // fast-check still fails the property on any failed expect.
+    files: ["**/*.property.test.ts"],
+    rules: { "vitest/no-conditional-expect": "off" },
+  },
 );

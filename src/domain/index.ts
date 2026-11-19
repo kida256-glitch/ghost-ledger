@@ -64,4 +64,18 @@ export {
   validateDisplayName,
 } from "./member";
 export type { Member, MemberRole, MemberStatus, Phone } from "./member";
+export { applyEntry, loanOutstanding, loanStatus, replay, withMember } from "./replay";
+export type { EntryRecord, LedgerState, LoanRecord, LoanStage, LoanStatus } from "./replay";
+export {
+  activeLoan,
+  groupSummary,
+  listOverdueLoans,
+  loanLimit,
+  loanView,
+  memberSummary,
+  openLoan,
+} from "./loans";
+export type { GroupSummary, LoanView, MemberSummary, OverdueLoan } from "./loans";
+export { execute, executeAll } from "./commands";
+export type { Command, CommandContext } from "./commands";
 export type { ChainHead, VerifyFailureReason, VerifyResult } from "./chain";

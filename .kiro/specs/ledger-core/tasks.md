@@ -88,14 +88,14 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - P3, P4, P5.
     - Examples: each phone format; `NOT_A_LEADER`; each out-of-range rule.
 
-- [ ] 9. `replay.ts` and `commands.ts`: deposits, social fund, invariants
+- [x] 9. `replay.ts` and `commands.ts`: deposits, social fund, invariants
   - Contents: `LedgerState`, `replay`, `applyEntry` (total), `execute`/`executeAll` for `deposit` and `contributeSocialFund`, the R8 invariant check, `OUT_OF_ORDER`. Also the first command-sequence arbitrary in `testing/arbitraries.ts`.
   - Covers: 4.5, 4.9, 7.1, 7.4, 7.5, 8.1, 8.2, 9.1–9.3.
   - Tests:
     - P6, P10, P11, P14, P15, P16.
     - Examples: `BELOW_MIN_DEPOSIT`, `OUT_OF_ORDER`.
 
-- [ ] 10. Reversals
+- [x] 10. Reversals
   - Contents: the `reverseEntry` command and its replay effect.
   - Covers: 4.6–4.8, 7.6.
   - Tests:
@@ -103,14 +103,14 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - One example per `INVALID_REVERSAL` case.
     - Reversing a deposit that backs lent-out cash gives `NEGATIVE_BALANCE` (8.2).
 
-- [ ] 11. Loan request, approval and rejection
+- [x] 11. Loan request, approval and rejection
   - Contents: `requestLoan`, `approveLoan`, `rejectLoan`, loan status in state, and the arbitraries extended with loan commands.
   - Covers: 3.9, 7.7, 10.1–10.7, 10.11–10.13, 10.14 (approval).
   - Tests:
     - P13, P17 (request and approval part), P19.
     - Examples: `OPEN_LOAN_EXISTS`, `EXCEEDS_LOAN_LIMIT` carrying the limit, `INVALID_TERM`, `MEMBER_SUSPENDED`, `SELF_APPROVAL`; a rejected member can request again.
 
-- [ ] 12. Disbursement
+- [x] 12. Disbursement
   - Contents: `disburseLoan`, interest and due date fixed at disbursement, and `executeAll` for approve+disburse.
   - Covers: 1.3, 10.8–10.10, 10.11–10.13 (disbursement), 10.14 (disbursement), 10.15, 10.16, 10.17 (domain side).
   - Tests:
@@ -120,7 +120,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
       - disbursing a `requested` loan gives `INVALID_LOAN_STATE`;
       - an approve+disburse batch where the second command fails returns an error and no entries.
 
-- [ ] 13. Repayments, overdue loans and summaries
+- [x] 13. Repayments, overdue loans and summaries
   - Contents: `repayLoan`, the `repaid` status, `loanLimit`, `memberSummary`, `groupSummary`, `listOverdueLoans`.
   - Covers: 7.2, 7.3, 11.1–11.6.
   - Tests:
