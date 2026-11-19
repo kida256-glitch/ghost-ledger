@@ -216,7 +216,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - a source-grep test finds no `pg_advisory_lock(` and no `name:` in query configs.
   - Update `.env.example`.
 
-- [ ] 20. `LedgerReader`
+- [x] 20. `LedgerReader`
   - Covers: interface for 7.x, 11.6 and 12.x consumers, with 3.1 lookups by phone and by auth user.
   - Tests (PGlite as `ghost_readonly`): every method returns correctly mapped data; the reader exposes no write method (a type-level test).
 
