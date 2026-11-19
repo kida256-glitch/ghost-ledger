@@ -267,7 +267,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
 
 ## Phase 4: Integration and traceability
 
-- [ ] 25. Concurrency integration test
+- [x] 25. Concurrency integration test
   - Contents:
     - `src/db/ledger-writer.integration.test.ts`, with the global setup from design §11;
     - drop `--passWithNoTests` from `test:integration`;
