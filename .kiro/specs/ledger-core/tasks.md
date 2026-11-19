@@ -144,7 +144,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
       - a burst at 21:59 to 22:30 doesn't count, because not all of its entries are out of hours;
       - overlapping windows merge into one anomaly.
 
-- [ ] 15a. Deposit request and confirmation; leader-only reversals; seed actors (task 15 review)
+- [x] 15a. Deposit request and confirmation; leader-only reversals; seed actors (task 15 review)
   - Contents:
     - entry format v2: types `DEPOSIT_REQUEST` and `DEPOSIT_CONFIRMATION` replace `DEPOSIT`; new hashed field `confirmsEntryId` (design §2.1); golden vectors recomputed by the standalone script;
     - commands `requestDeposit` and `confirmDeposit` (replacing `deposit`); error `INVALID_DEPOSIT_STATE`; request status `pending`/`confirmed` in the state;

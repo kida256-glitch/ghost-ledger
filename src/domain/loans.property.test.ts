@@ -2,6 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { listOverdueLoans } from "./index";
 import { scenarioArb, type Scenario } from "./testing/arbitraries";
+import { ALICE, Ledger } from "./testing/fixtures";
 
 /** Brute force from the raw entries: no replay state, no loan helpers. */
 function overdueOracle(entries: readonly import("./index").LedgerEntry[], asOf: string) {
@@ -24,6 +25,30 @@ function overdueOracle(entries: readonly import("./index").LedgerEntry[], asOf: 
 }
 
 describe("loan properties", () => {
+  it("P22 R11.6 around the due date: overdue only from the next Kampala day, matching the brute-force filter", () => {
+    // Built directly so every run has a disbursed loan and an "as of" near its due date.
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 3 }),
+        fc.integer({ min: 0, max: 60 * 24 * 60 }),
+        fc.integer({ min: 0, max: 1_000 }),
+        fc.integer({ min: -2 * 1_440, max: 3 * 1_440 }),
+        (term, startMinutes, repaidPermille, offset) => {
+          const l = new Ledger();
+          l.advance(startMinutes);
+          l.deposit(ALICE, 10_000);
+          l.borrow(ALICE, 10_000, term);
+          const owed = 10_000 + (l.entries.at(-1)?.interestAmount ?? 0);
+          const repay = Math.floor((owed * repaidPermille) / 1_000);
+          if (repay > 0) l.must(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: repay }));
+          const due = l.entries.find((e) => e.type === "LOAN_DISBURSEMENT")?.dueDate as string;
+          const asOf = new Date(Date.parse(`${due}T00:00:00.000Z`) - 3 * 3_600_000 + offset * 60_000).toISOString();
+          expect(listOverdueLoans(l.state, asOf)).toEqual(overdueOracle(l.entries, asOf));
+        },
+      ),
+    );
+  });
+
   it("P22 R11.6 listOverdueLoans matches a brute-force filter over the entries", () => {
     const random = fc.integer({ min: Date.UTC(2026, 0, 1), max: Date.UTC(2028, 0, 1) }).map((ms) => new Date(ms).toISOString());
     // Often within a day or two of a real due date, where "due today" vs "overdue" matters.

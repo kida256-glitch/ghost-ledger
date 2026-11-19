@@ -101,8 +101,15 @@ export class Ledger {
     return (r as Extract<typeof r, { ok: true }>).value.entry;
   }
 
-  deposit(member: Member, amount: number) {
-    return this.must(this.self(member, { kind: "deposit", memberId: member.id, amount }));
+  /** The member requests a deposit over USSD. Returns the DEPOSIT_REQUEST entry. */
+  requestDeposit(member: Member, amount: number) {
+    return this.must(this.self(member, { kind: "requestDeposit", memberId: member.id, amount }));
+  }
+
+  /** Request (by the member) and confirmation (by CHAIR, or TREASURER for the chair). Returns the DEPOSIT_CONFIRMATION entry. */
+  deposit(member: Member, amount: number, confirmer: Member = member.id === CHAIR.id ? TREASURER : CHAIR) {
+    const request = this.requestDeposit(member, amount);
+    return this.must(this.by(confirmer, { kind: "confirmDeposit", requestEntryId: request.id }));
   }
 
   /** Request, approve (by CHAIR) and disburse (by TREASURER). Returns the loan id. */

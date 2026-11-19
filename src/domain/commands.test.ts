@@ -5,41 +5,87 @@ import { ALICE, BOB, CHAIR, GROUP, Ledger, OUTSIDER, SUSPENDED, TREASURER, error
 const UNKNOWN = "ffffffff-0000-4000-8000-00000000abcd";
 
 describe("task 9: deposits, social fund, invariants", () => {
-  it("records a deposit and a social fund contribution", () => {
+  it("records a deposit (request + confirmation) and a social fund contribution", () => {
     const l = new Ledger();
-    const e = l.deposit(ALICE, 5_000);
-    expect(e).toMatchObject({ type: "DEPOSIT", seq: 1, amount: 5_000, subjectMemberId: ALICE.id, actorMemberId: ALICE.id, channel: "ussd" });
+    const req = l.requestDeposit(ALICE, 5_000);
+    expect(req).toMatchObject({ type: "DEPOSIT_REQUEST", seq: 1, amount: 5_000, subjectMemberId: ALICE.id, actorMemberId: ALICE.id, channel: "ussd" });
+    const conf = l.must(l.by(CHAIR, { kind: "confirmDeposit", requestEntryId: req.id }));
+    expect(conf).toMatchObject({ type: "DEPOSIT_CONFIRMATION", amount: 5_000, subjectMemberId: ALICE.id, actorMemberId: CHAIR.id, confirmsEntryId: req.id });
     l.must(l.self(ALICE, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1_000 }));
     expect(memberSummary(l.state, ALICE.id)).toMatchObject({ savings: 5_000, socialFund: 1_000, loanLimit: 15_000 });
-    expect(groupSummary(l.state)).toMatchObject({ totalSavings: 5_000, totalSocialFund: 1_000, groupCash: 6_000 });
-    expect(verifyChain(l.entries)).toMatchObject({ ok: true, count: 2 });
+    expect(groupSummary(l.state)).toMatchObject({ totalSavings: 5_000, totalSocialFund: 1_000, groupCash: 6_000, pendingDeposits: [] });
+    expect(verifyChain(l.entries)).toMatchObject({ ok: true, count: 3 });
   });
 
-  it("a leader can record a deposit for a member on the dashboard", () => {
+  it("a deposit request changes no balance until it is confirmed (R9.1, R9.8)", () => {
     const l = new Ledger();
-    expect(l.must(l.by(CHAIR, { kind: "deposit", memberId: ALICE.id, amount: 5_000 }))).toMatchObject({
+    const req = l.requestDeposit(ALICE, 5_000);
+    expect(memberSummary(l.state, ALICE.id)).toMatchObject({ savings: 0, loanLimit: 0, deposits: [expect.objectContaining({ status: "pending" })] });
+    expect(groupSummary(l.state)).toMatchObject({ totalSavings: 0, groupCash: 0, pendingDeposits: [expect.objectContaining({ requestEntryId: req.id, amount: 5_000 })] });
+    expect(l.self(ALICE, { kind: "requestLoan", memberId: ALICE.id, principal: 1_000, termMonths: 1 })).toEqual(error({ code: "EXCEEDS_LOAN_LIMIT", limit: 0 }));
+  });
+
+  it("a leader can record a deposit request for a member on the dashboard; a non-leader can't (R9.4)", () => {
+    const l = new Ledger();
+    expect(l.must(l.by(CHAIR, { kind: "requestDeposit", memberId: ALICE.id, amount: 5_000 }))).toMatchObject({
       subjectMemberId: ALICE.id,
       actorMemberId: CHAIR.id,
       channel: "dashboard",
+    });
+    expect(l.by(BOB, { kind: "requestDeposit", memberId: ALICE.id, amount: 5_000 })).toEqual(error({ code: "NOT_A_LEADER" }));
+    expect(l.by(BOB, { kind: "requestDeposit", memberId: BOB.id, amount: 5_000 })).toEqual(error({ code: "NOT_A_LEADER" }));
+  });
+
+  it("SELF_APPROVAL when a leader confirms their own deposit; another leader can (R9.6)", () => {
+    const l = new Ledger();
+    const req = l.requestDeposit(CHAIR, 5_000);
+    expect(l.by(CHAIR, { kind: "confirmDeposit", requestEntryId: req.id })).toEqual(error({ code: "SELF_APPROVAL" }));
+    expect(l.by(TREASURER, { kind: "confirmDeposit", requestEntryId: req.id }).ok).toBe(true);
+  });
+
+  it("NOT_A_LEADER when an ordinary member, an outsider or no one confirms (R9.6)", () => {
+    const l = new Ledger();
+    const req = l.requestDeposit(ALICE, 5_000);
+    expect(l.by(BOB, { kind: "confirmDeposit", requestEntryId: req.id })).toEqual(error({ code: "NOT_A_LEADER" }));
+    expect(l.by(OUTSIDER, { kind: "confirmDeposit", requestEntryId: req.id })).toEqual(error({ code: "NOT_A_LEADER" }));
+    expect(l.try({ kind: "confirmDeposit", requestEntryId: req.id }, l.ctx("system", null))).toEqual(error({ code: "NOT_A_LEADER" }));
+  });
+
+  it("INVALID_DEPOSIT_STATE for an unknown request, a non-request entry and an already-confirmed request (R9.7)", () => {
+    const l = new Ledger();
+    expect(l.by(CHAIR, { kind: "confirmDeposit", requestEntryId: UNKNOWN })).toEqual(error({ code: "INVALID_DEPOSIT_STATE" }));
+    const social = l.must(l.self(ALICE, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1_000 }));
+    expect(l.by(CHAIR, { kind: "confirmDeposit", requestEntryId: social.id })).toEqual(error({ code: "INVALID_DEPOSIT_STATE" }));
+    const req = l.requestDeposit(ALICE, 5_000);
+    l.must(l.by(CHAIR, { kind: "confirmDeposit", requestEntryId: req.id }));
+    expect(l.by(TREASURER, { kind: "confirmDeposit", requestEntryId: req.id })).toEqual(error({ code: "INVALID_DEPOSIT_STATE" }));
+  });
+
+  it("seed entries may name an actor (R4.10): a seeded confirmation by a leader", () => {
+    const l = new Ledger();
+    const req = l.must(l.try({ kind: "requestDeposit", memberId: ALICE.id, amount: 5_000 }, l.ctx("seed", null)));
+    expect(l.must(l.try({ kind: "confirmDeposit", requestEntryId: req.id }, l.ctx("seed", TREASURER.id)))).toMatchObject({
+      channel: "seed",
+      actorMemberId: TREASURER.id,
     });
   });
 
   it("BELOW_MIN_DEPOSIT carries the minimum; the social fund has no minimum", () => {
     const l = new Ledger();
-    expect(l.self(ALICE, { kind: "deposit", memberId: ALICE.id, amount: 1_999 })).toEqual(
+    expect(l.self(ALICE, { kind: "requestDeposit", memberId: ALICE.id, amount: 1_999 })).toEqual(
       error({ code: "BELOW_MIN_DEPOSIT", minDeposit: 2_000 }),
     );
     expect(l.self(ALICE, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1 }).ok).toBe(true);
   });
 
   it.each([0, -1, 1.5, Number.NaN, 50_000_001])("INVALID_AMOUNT for %s", (amount) => {
-    expect(new Ledger().self(ALICE, { kind: "deposit", memberId: ALICE.id, amount })).toEqual(error({ code: "INVALID_AMOUNT" }));
+    expect(new Ledger().self(ALICE, { kind: "requestDeposit", memberId: ALICE.id, amount })).toEqual(error({ code: "INVALID_AMOUNT" }));
   });
 
   it("MEMBER_NOT_FOUND for an unknown member and for a member of another group", () => {
     const l = new Ledger();
-    expect(l.by(CHAIR, { kind: "deposit", memberId: UNKNOWN, amount: 5_000 })).toEqual(error({ code: "MEMBER_NOT_FOUND" }));
-    expect(l.by(CHAIR, { kind: "deposit", memberId: OUTSIDER.id, amount: 5_000 })).toEqual(error({ code: "MEMBER_NOT_FOUND" }));
+    expect(l.by(CHAIR, { kind: "requestDeposit", memberId: UNKNOWN, amount: 5_000 })).toEqual(error({ code: "MEMBER_NOT_FOUND" }));
+    expect(l.by(CHAIR, { kind: "requestDeposit", memberId: OUTSIDER.id, amount: 5_000 })).toEqual(error({ code: "MEMBER_NOT_FOUND" }));
     expect(l.by(CHAIR, { kind: "repayLoan", memberId: UNKNOWN, amount: 5_000 })).toEqual(error({ code: "MEMBER_NOT_FOUND" }));
     expect(l.self(ALICE, { kind: "requestLoan", memberId: UNKNOWN, principal: 1, termMonths: 1 })).toEqual(
       error({ code: "MEMBER_NOT_FOUND" }),
@@ -48,7 +94,8 @@ describe("task 9: deposits, social fund, invariants", () => {
 
   it("suspended members can still deposit and repay (R3.9)", () => {
     const l = new Ledger();
-    expect(l.self(SUSPENDED, { kind: "deposit", memberId: SUSPENDED.id, amount: 5_000 }).ok).toBe(true);
+    l.deposit(SUSPENDED, 5_000);
+    expect(memberSummary(l.state, SUSPENDED.id)?.savings).toBe(5_000);
     expect(l.self(SUSPENDED, { kind: "repayLoan", memberId: SUSPENDED.id, amount: 1 })).toEqual(error({ code: "NO_ACTIVE_LOAN" }));
   });
 
@@ -56,23 +103,25 @@ describe("task 9: deposits, social fund, invariants", () => {
     const l = new Ledger();
     l.deposit(ALICE, 5_000);
     const earlier = { ...l.ctx("ussd", ALICE.id), now: "2026-01-01T00:00:00.000Z" };
-    expect(l.try({ kind: "deposit", memberId: ALICE.id, amount: 5_000 }, earlier)).toEqual(error({ code: "OUT_OF_ORDER" }));
+    expect(l.try({ kind: "requestDeposit", memberId: ALICE.id, amount: 5_000 }, earlier)).toEqual(error({ code: "OUT_OF_ORDER" }));
     // Same millisecond as the head is fine.
     const same = { ...l.ctx("ussd", ALICE.id), now: l.state.headOccurredAt ?? "" };
-    expect(l.try({ kind: "deposit", memberId: ALICE.id, amount: 5_000 }, same).ok).toBe(true);
+    expect(l.try({ kind: "requestDeposit", memberId: ALICE.id, amount: 5_000 }, same).ok).toBe(true);
   });
 
   it("throws on a context that breaks R4.10 (programmer error)", () => {
     const l = new Ledger();
-    expect(() => l.try({ kind: "deposit", memberId: ALICE.id, amount: 5_000 }, l.ctx("ussd", BOB.id))).toThrow(TypeError);
-    expect(() => l.try({ kind: "deposit", memberId: ALICE.id, amount: 5_000 }, l.ctx("dashboard", null))).toThrow(TypeError);
-    expect(() => l.try({ kind: "deposit", memberId: ALICE.id, amount: 5_000 }, l.ctx("seed", CHAIR.id))).toThrow(TypeError);
-    expect(l.try({ kind: "deposit", memberId: ALICE.id, amount: 5_000 }, l.ctx("seed", null)).ok).toBe(true);
+    const social = { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1_000 } as const;
+    expect(() => l.try(social, l.ctx("ussd", BOB.id))).toThrow(TypeError);
+    expect(() => l.try(social, l.ctx("dashboard", null))).toThrow(TypeError);
+    expect(() => l.try(social, l.ctx("system", CHAIR.id))).toThrow(TypeError);
+    expect(l.try(social, l.ctx("seed", null)).ok).toBe(true);
+    expect(l.try(social, l.ctx("seed", CHAIR.id)).ok).toBe(true);
   });
 
   it("throws on a malformed now", () => {
     const l = new Ledger();
-    expect(() => l.try({ kind: "deposit", memberId: ALICE.id, amount: 5_000 }, { ...l.ctx("ussd", ALICE.id), now: "2026-01-10" })).toThrow(
+    expect(() => l.try({ kind: "requestDeposit", memberId: ALICE.id, amount: 5_000 }, { ...l.ctx("ussd", ALICE.id), now: "2026-01-10" })).toThrow(
       TypeError,
     );
   });
@@ -85,7 +134,7 @@ describe("task 10: reversals", () => {
     const r = l.must(l.by(CHAIR, { kind: "reverseEntry", entryId: d.id, reason: "Recorded twice" }));
     expect(r).toMatchObject({ type: "REVERSAL", amount: 5_000, reversesEntryId: d.id, subjectMemberId: ALICE.id });
     expect(memberSummary(l.state, ALICE.id)).toMatchObject({ savings: 0 });
-    expect(l.entries[0]).toBe(d);
+    expect(l.entries[1]).toBe(d);
   });
 
   it("INVALID_REVERSAL: unknown entry, non-money entry, already reversed", () => {
@@ -100,8 +149,9 @@ describe("task 10: reversals", () => {
   });
 
   it("INVALID_REVERSAL: an entry of another group is unknown to this ledger", () => {
-    const other = new Ledger({ ...GROUP, id: OUTSIDER.groupId }, [{ ...ALICE, groupId: OUTSIDER.groupId }]);
-    const foreign = other.deposit({ ...ALICE, groupId: OUTSIDER.groupId }, 5_000);
+    const otherAlice = { ...ALICE, groupId: OUTSIDER.groupId };
+    const other = new Ledger({ ...GROUP, id: OUTSIDER.groupId }, [otherAlice, OUTSIDER]);
+    const foreign = other.deposit(otherAlice, 5_000, OUTSIDER);
     const l = new Ledger();
     expect(l.by(CHAIR, { kind: "reverseEntry", entryId: foreign.id, reason: "x" })).toEqual(error({ code: "INVALID_REVERSAL" }));
   });
@@ -140,6 +190,23 @@ describe("task 10: reversals", () => {
       error({ code: "NEGATIVE_BALANCE", balance: "groupCash" }),
     );
     expect(l.state).toBe(before);
+  });
+
+  it("NOT_A_LEADER when an ordinary member, a suspended leader or an outsider reverses (R4.12)", () => {
+    const l = new Ledger(GROUP, [CHAIR, TREASURER, ALICE, BOB, OUTSIDER, { ...SUSPENDED, role: "secretary" as const }]);
+    const d = l.deposit(ALICE, 5_000);
+    for (const actor of [ALICE, BOB, OUTSIDER, { ...SUSPENDED, role: "secretary" as const }]) {
+      expect(l.by(actor, { kind: "reverseEntry", entryId: d.id, reason: "x" })).toEqual(error({ code: "NOT_A_LEADER" }));
+    }
+    expect(l.by(TREASURER, { kind: "reverseEntry", entryId: d.id, reason: "x" }).ok).toBe(true);
+  });
+
+  it("reversing a confirmation removes the savings and leaves the request consumed", () => {
+    const l = new Ledger();
+    const d = l.deposit(ALICE, 5_000);
+    l.must(l.by(TREASURER, { kind: "reverseEntry", entryId: d.id, reason: "Cash never arrived" }));
+    expect(memberSummary(l.state, ALICE.id)).toMatchObject({ savings: 0, deposits: [expect.objectContaining({ status: "confirmed" })] });
+    expect(l.by(TREASURER, { kind: "confirmDeposit", requestEntryId: d.confirmsEntryId as string })).toEqual(error({ code: "INVALID_DEPOSIT_STATE" }));
   });
 
   it("INVALID_REASON for an empty or too-long reason", () => {
@@ -198,7 +265,7 @@ describe("task 11: loan request, approval and rejection", () => {
 
   it("MEMBER_SUSPENDED", () => {
     const l = setup();
-    l.self(SUSPENDED, { kind: "deposit", memberId: SUSPENDED.id, amount: 10_000 });
+    l.deposit(SUSPENDED, 10_000);
     expect(l.self(SUSPENDED, { kind: "requestLoan", memberId: SUSPENDED.id, principal: 1_000, termMonths: 1 })).toEqual(
       error({ code: "MEMBER_SUSPENDED" }),
     );
@@ -212,8 +279,8 @@ describe("task 11: loan request, approval and rejection", () => {
     }
     expect(l.try({ kind: "approveLoan", loanId }, l.ctx("system", null))).toEqual(error({ code: "NOT_A_LEADER" }));
     const suspendedChair = { ...CHAIR, status: "suspended" as const };
-    const l2 = new Ledger(GROUP, [suspendedChair, ALICE]);
-    l2.deposit(ALICE, 10_000);
+    const l2 = new Ledger(GROUP, [suspendedChair, TREASURER, ALICE]);
+    l2.deposit(ALICE, 10_000, TREASURER);
     const id2 = l2.must(l2.self(ALICE, { kind: "requestLoan", memberId: ALICE.id, principal: 1_000, termMonths: 1 })).loanId as Uuid;
     expect(l2.by(suspendedChair, { kind: "approveLoan", loanId: id2 })).toEqual(error({ code: "NOT_A_LEADER" }));
   });
@@ -307,7 +374,7 @@ describe("task 12: disbursement", () => {
     l2.must(l2.by(CHAIR, { kind: "approveLoan", loanId: id2 }));
     expect(l2.by(aliceAsLeader, { kind: "disburseLoan", loanId: id2 })).toEqual(error({ code: "SELF_APPROVAL" }));
 
-    const savings = l.entries.find((e) => e.type === "DEPOSIT" && e.subjectMemberId === ALICE.id);
+    const savings = l.entries.find((e) => e.type === "DEPOSIT_CONFIRMATION" && e.subjectMemberId === ALICE.id);
     l.must(l.by(CHAIR, { kind: "reverseEntry", entryId: savings?.id ?? "", reason: "Wrong member" }));
     expect(l.by(TREASURER, { kind: "disburseLoan", loanId })).toEqual(error({ code: "EXCEEDS_LOAN_LIMIT", limit: 0 }));
     expect(memberSummary(l.state, ALICE.id)?.loans[0]?.status).toBe("approved");
@@ -327,8 +394,8 @@ describe("task 12: disbursement", () => {
     expect(ok.ok).toBe(true);
     if (!ok.ok) return;
     expect(ok.value.entries.map((e) => [e.type, e.idempotencyKey, e.seq])).toEqual([
-      ["LOAN_APPROVAL", "dash-42:0", 4],
-      ["LOAN_DISBURSEMENT", "dash-42:1", 5],
+      ["LOAN_APPROVAL", "dash-42:0", 6],
+      ["LOAN_DISBURSEMENT", "dash-42:1", 7],
     ]);
     expect(verifyChain([...l.entries, ...ok.value.entries]).ok).toBe(true);
   });

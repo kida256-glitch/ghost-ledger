@@ -5,7 +5,7 @@ const deposit: UnhashedEntry = {
   id: "3f1c2a9e-8b4d-4c6a-9e21-7d5b0a1c4e8f",
   groupId: "0b6e4d2c-1a3f-4e5d-8c7b-9a0f1e2d3c4b",
   seq: 1,
-  type: "DEPOSIT",
+  type: "DEPOSIT_REQUEST",
   subjectMemberId: "5a7c9e1b-3d5f-4a6c-8e0b-2d4f6a8c0e1b",
   actorMemberId: null,
   occurredAt: "2026-03-14T07:05:09.042Z",
@@ -17,6 +17,7 @@ const deposit: UnhashedEntry = {
   interestAmount: null,
   dueDate: null,
   reversesEntryId: null,
+  confirmsEntryId: null,
   reason: null,
   prevHash: GENESIS_HASH,
 };
@@ -88,7 +89,7 @@ describe("ledgerEntrySchema", () => {
       ["dashboard", subject, true],
       ["dashboard", null, false],
       ["seed", null, true],
-      ["seed", actor, false],
+      ["seed", actor, true],
       ["system", null, true],
       ["system", actor, false],
     ] as const)("%s with actor %s is valid: %s", (channel, actorMemberId, expected) => {

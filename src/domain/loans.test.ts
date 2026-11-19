@@ -21,6 +21,7 @@ describe("summaries (R7.2, R7.3)", () => {
       loans: [
         expect.objectContaining({ loanId, status: "disbursed", principal: 20_000, interest: 4_000, amountOwed: 24_000, repaid: 5_000, outstanding: 19_000 }),
       ],
+      deposits: [expect.objectContaining({ amount: 10_000, status: "confirmed" })],
     });
     expect(groupSummary(l.state)).toEqual({
       totalSavings: 20_000,
@@ -28,6 +29,7 @@ describe("summaries (R7.2, R7.3)", () => {
       groupCash: 20_000 + 1_000 - 20_000 + 5_000,
       totalOutstanding: 19_000,
       pendingLoans: [expect.objectContaining({ loanId: bobLoan, status: "requested", outstanding: null })],
+      pendingDeposits: [],
     });
     expect(loanLimit(l.state, BOB.id)).toBe(30_000);
   });

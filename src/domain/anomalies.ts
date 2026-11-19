@@ -10,6 +10,7 @@ export const ANOMALY_RULES = [
   "LOAN_ABOVE_SAVINGS",
   "REPEATED_REVERSALS",
   "OUT_OF_HOURS_BURST",
+  "DEPOSIT_WITHOUT_REQUEST",
 ] as const;
 export type AnomalyRule = (typeof ANOMALY_RULES)[number];
 
@@ -143,8 +144,32 @@ function detect(input: DetectInput): Anomaly[] {
 
   // R12.3, R12.4: one pass over the chain with the balances just before each entry.
   const approved = new Set<Uuid>();
+  const requests = new Map<Uuid, { memberId: Uuid; amount: number }>();
+  const confirmed = new Set<Uuid>();
   replayVisiting(g, [], entries, (before, e) => {
     if (e.type === "LOAN_APPROVAL") approved.add(e.loanId);
+    if (e.type === "DEPOSIT_REQUEST") requests.set(e.id, { memberId: e.subjectMemberId, amount: e.amount });
+    if (e.type === "DEPOSIT_CONFIRMATION") {
+      // R12.10: credited savings must trace back to one earlier matching request, confirmed by someone else.
+      const request = requests.get(e.confirmsEntryId);
+      const why =
+        !request || request.memberId !== e.subjectMemberId || request.amount !== e.amount
+          ? "with no matching deposit request"
+          : confirmed.has(e.confirmsEntryId)
+            ? "for a deposit request that was already confirmed"
+            : e.actorMemberId === e.subjectMemberId
+              ? "and was confirmed by the depositor themselves"
+              : null;
+      confirmed.add(e.confirmsEntryId);
+      if (why !== null) {
+        add(
+          "DEPOSIT_WITHOUT_REQUEST",
+          "high",
+          [e],
+          `${formatUgx(e.amount)} was credited to ${name(e.subjectMemberId)}'s savings on ${kampalaDateTime(e.occurredAt)} (Kampala time) ${why}.`,
+        );
+      }
+    }
     if (e.type !== "LOAN_DISBURSEMENT") return;
     const when = kampalaDateTime(e.occurredAt);
     const what = formatUgx(e.amount);

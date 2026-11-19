@@ -7,7 +7,8 @@ export type Uuid = string;
 export type Hash = string;
 
 export const ENTRY_TYPES = [
-  "DEPOSIT",
+  "DEPOSIT_REQUEST",
+  "DEPOSIT_CONFIRMATION",
   "SOCIAL_FUND_CONTRIBUTION",
   "LOAN_REQUEST",
   "LOAN_APPROVAL",
@@ -21,9 +22,9 @@ export type EntryType = (typeof ENTRY_TYPES)[number];
 export const CHANNELS = ["ussd", "dashboard", "seed", "system"] as const;
 export type Channel = (typeof CHANNELS)[number];
 
-/** R4.3 glossary: entries that move money. */
+/** Glossary: entries that move money. A deposit request moves nothing until it is confirmed (R9). */
 export const MONEY_ENTRY_TYPES = [
-  "DEPOSIT",
+  "DEPOSIT_CONFIRMATION",
   "SOCIAL_FUND_CONTRIBUTION",
   "LOAN_DISBURSEMENT",
   "LOAN_REPAYMENT",
@@ -48,43 +49,36 @@ interface EntryBase {
   readonly hash: Hash;
 }
 
-/** Type-specific fields. `null` means "this type never records it" (R4.3, R4.4). */
-interface Fields<
-  A extends number | null,
-  L extends Uuid | null,
-  T extends number | null,
-  I extends number | null,
-  D extends CalendarDate | null,
-  R extends Uuid | null,
-  S extends string | null,
-> {
-  readonly amount: A;
-  readonly loanId: L;
-  readonly termMonths: T;
-  readonly interestAmount: I;
-  readonly dueDate: D;
-  readonly reversesEntryId: R;
-  readonly reason: S;
+/** The type-specific fields and their value types when present. */
+interface OptionalFields {
+  readonly amount: number;
+  readonly loanId: Uuid;
+  readonly termMonths: number;
+  readonly interestAmount: number;
+  readonly dueDate: CalendarDate;
+  readonly reversesEntryId: Uuid;
+  readonly confirmsEntryId: Uuid;
+  readonly reason: string;
 }
 
-export type DepositEntry = EntryBase & { readonly type: "DEPOSIT" } & Fields<number, null, null, null, null, null, null>;
-export type SocialFundEntry = EntryBase & { readonly type: "SOCIAL_FUND_CONTRIBUTION" } &
-  Fields<number, null, null, null, null, null, null>;
-export type LoanRequestEntry = EntryBase & { readonly type: "LOAN_REQUEST" } &
-  Fields<number, Uuid, number, null, null, null, null>;
-export type LoanApprovalEntry = EntryBase & { readonly type: "LOAN_APPROVAL" } &
-  Fields<null, Uuid, null, null, null, null, null>;
-export type LoanRejectionEntry = EntryBase & { readonly type: "LOAN_REJECTION" } &
-  Fields<null, Uuid, null, null, null, null, string>;
-export type LoanDisbursementEntry = EntryBase & { readonly type: "LOAN_DISBURSEMENT" } &
-  Fields<number, Uuid, number, number, CalendarDate, null, null>;
-export type LoanRepaymentEntry = EntryBase & { readonly type: "LOAN_REPAYMENT" } &
-  Fields<number, Uuid, null, null, null, null, null>;
-export type ReversalEntry = EntryBase & { readonly type: "REVERSAL" } &
-  Fields<number, null, null, null, null, Uuid, string>;
+/** An entry of type `T` that records the fields in `P`; every other optional field is `null` (R4.3, R4.4). */
+type Entry<T extends EntryType, P extends keyof OptionalFields> = EntryBase & { readonly type: T } & {
+  readonly [K in keyof OptionalFields]: K extends P ? OptionalFields[K] : null;
+};
+
+export type DepositRequestEntry = Entry<"DEPOSIT_REQUEST", "amount">;
+export type DepositConfirmationEntry = Entry<"DEPOSIT_CONFIRMATION", "amount" | "confirmsEntryId">;
+export type SocialFundEntry = Entry<"SOCIAL_FUND_CONTRIBUTION", "amount">;
+export type LoanRequestEntry = Entry<"LOAN_REQUEST", "amount" | "loanId" | "termMonths">;
+export type LoanApprovalEntry = Entry<"LOAN_APPROVAL", "loanId">;
+export type LoanRejectionEntry = Entry<"LOAN_REJECTION", "loanId" | "reason">;
+export type LoanDisbursementEntry = Entry<"LOAN_DISBURSEMENT", "amount" | "loanId" | "termMonths" | "interestAmount" | "dueDate">;
+export type LoanRepaymentEntry = Entry<"LOAN_REPAYMENT", "amount" | "loanId">;
+export type ReversalEntry = Entry<"REVERSAL", "amount" | "reversesEntryId" | "reason">;
 
 export type LedgerEntry =
-  | DepositEntry
+  | DepositRequestEntry
+  | DepositConfirmationEntry
   | SocialFundEntry
   | LoanRequestEntry
   | LoanApprovalEntry
@@ -147,6 +141,7 @@ const absent = {
   interestAmount: z.null(),
   dueDate: z.null(),
   reversesEntryId: z.null(),
+  confirmsEntryId: z.null(),
   reason: z.null(),
 };
 
@@ -161,7 +156,8 @@ const variant = <T extends EntryType, S extends Partial<Record<keyof typeof abse
  */
 export const ledgerEntrySchema = z
   .discriminatedUnion("type", [
-  variant("DEPOSIT", { amount: amountSchema }),
+  variant("DEPOSIT_REQUEST", { amount: amountSchema }),
+  variant("DEPOSIT_CONFIRMATION", { amount: amountSchema, confirmsEntryId: uuidSchema }),
   variant("SOCIAL_FUND_CONTRIBUTION", { amount: amountSchema }),
   variant("LOAN_REQUEST", { amount: amountSchema, loanId: uuidSchema, termMonths: termSchema }),
   variant("LOAN_APPROVAL", { loanId: uuidSchema }),
@@ -183,7 +179,8 @@ export const ledgerEntrySchema = z
 
 /**
  * R4.10: `ussd` entries are recorded by the subject member themselves,
- * `dashboard` entries by a named actor, `seed` and `system` entries by no one.
+ * `dashboard` entries by a named actor, `seed` entries by an optional actor
+ * (so seeded approvals can name the leader), `system` entries by no one.
  */
 export function actorMatchesChannel(channel: Channel, actor: Uuid | null, subject: Uuid): boolean {
   switch (channel) {
@@ -192,6 +189,7 @@ export function actorMatchesChannel(channel: Channel, actor: Uuid | null, subjec
     case "dashboard":
       return actor !== null;
     case "seed":
+      return true;
     case "system":
       return actor === null;
   }

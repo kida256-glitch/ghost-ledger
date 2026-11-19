@@ -12,7 +12,7 @@ import {
 } from "./index";
 import { SCENARIO_GROUP_ID, groupArb, membersArb, memberId, scenarioArb, sealAll, type Scenario } from "./testing/arbitraries";
 
-const NONE = { amount: null, loanId: null, termMonths: null, interestAmount: null, dueDate: null, reversesEntryId: null, reason: null } as const;
+const NONE = { amount: null, loanId: null, termMonths: null, interestAmount: null, dueDate: null, reversesEntryId: null, confirmsEntryId: null, reason: null } as const;
 const AS_OF = "2030-01-01T00:00:00.000Z";
 const forgedId = (n: number) => `fa000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
 
@@ -76,7 +76,8 @@ describe("anomaly properties", () => {
 
   it("P23 R12.4 R12.9 a forged, approved disbursement above multiplier × savings is flagged as LOAN_ABOVE_SAVINGS only", () => {
     fc.assert(
-      fc.property(scenarioArb(), fc.nat(), fc.integer({ min: 1, max: 100_000 }), (s, who, extra) => {
+      // Exactly one over the limit half the time: the boundary a wrong comparison would miss.
+      fc.property(scenarioArb(), fc.nat(), fc.oneof(fc.constant(1), fc.integer({ min: 1, max: 100_000 })), (s, who, extra) => {
         const subject = memberId(who % s.members.length);
         const limit = s.group.loanMultiplier * Math.max(0, s.state.savings.get(subject) ?? 0);
         const loanId = forgedId(3);
@@ -90,6 +91,53 @@ describe("anomaly properties", () => {
           // The forged entries may also land in an out-of-hours burst; that rule is tested separately.
           .filter((r) => r === "DISBURSEMENT_WITHOUT_APPROVAL" || r === "LOAN_ABOVE_SAVINGS");
         expect(rules).toEqual(["LOAN_ABOVE_SAVINGS"]);
+      }),
+    );
+  });
+
+  it("P30 R12.10 command ledgers produce no DEPOSIT_WITHOUT_REQUEST", () => {
+    fc.assert(
+      fc.property(scenarioArb(), (s) => {
+        const rules = detectAnomalies({ group: s.group, members: s.members, entries: [...s.entries], asOf: AS_OF }).map((a) => a.rule);
+        expect(rules).not.toContain("DEPOSIT_WITHOUT_REQUEST");
+      }),
+    );
+  });
+
+  it("P30 R12.2 R12.10 a forged confirmation (no request, wrong member or amount, double, self-confirmed) is flagged high, naming only that entry", () => {
+    const forgery = fc.constantFrom("none", "member", "amount", "double", "self");
+    fc.assert(
+      fc.property(scenarioArb(), forgery, fc.integer({ min: 1, max: 100_000 }), (s, kind, amount) => {
+        const pending = [...s.state.deposits.values()];
+        const target = pending.at(-1);
+        // Fall back to "none" when the ledger has no request to misuse.
+        const k = target === undefined ? "none" : kind;
+        const t = target ?? { requestEntryId: forgedId(7), memberId: memberId(0), amount, status: "pending" as const };
+        const other = s.members.find((m) => m.id !== t.memberId && m.groupId === s.group.id) ?? s.members[0];
+        const subject = k === "member" ? (other?.id ?? t.memberId) : t.memberId;
+        const leader = s.members.find((m) => m.role !== "member" && m.id !== subject)?.id ?? memberId(0);
+        const confirmsEntryId = k === "none" ? forgedId(8) : t.requestEntryId;
+        const value = k === "amount" ? t.amount + 1 : t.amount;
+        const confirmation = (id: string, actor: string) => ({
+          ...NONE,
+          id,
+          type: "DEPOSIT_CONFIRMATION" as const,
+          subjectMemberId: subject,
+          actorMemberId: actor,
+          channel: "dashboard" as const,
+          occurredAt: later(s, 3),
+          idempotencyKey: null,
+          amount: value,
+          confirmsEntryId,
+        });
+        // "double": confirm a pending request legitimately-shaped twice; the second is the forgery.
+        const drafts =
+          k === "double" && t.status === "pending"
+            ? [confirmation(forgedId(9), leader), confirmation(forgedId(10), leader)]
+            : [confirmation(forgedId(10), k === "self" ? subject : leader)];
+        const entries = append(s, drafts);
+        const flagged = detectAnomalies({ group: s.group, members: s.members, entries, asOf: AS_OF }).filter((a) => a.rule === "DEPOSIT_WITHOUT_REQUEST");
+        expect(flagged).toEqual([expect.objectContaining({ severity: "high", memberId: subject, entryIds: [forgedId(10)] })]);
       }),
     );
   });
@@ -123,7 +171,7 @@ describe("anomaly properties", () => {
           const base = { id: forgedId(100 + i), groupId: SCENARIO_GROUP_ID, subjectMemberId: subject, occurredAt, idempotencyKey: null, ...NONE };
           return r.reversal
             ? { ...base, type: "REVERSAL", actorMemberId: memberId(0), channel: "dashboard", amount: 1_000, reversesEntryId: forgedId(999), reason: "Fix" }
-            : { ...base, type: "DEPOSIT", actorMemberId: subject, channel: "ussd", amount: 2_000 };
+            : { ...base, type: "DEPOSIT_REQUEST", actorMemberId: subject, channel: "ussd", amount: 2_000 };
         }),
       ),
     );

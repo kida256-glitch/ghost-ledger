@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { detectAnomalies, seal, type EntryDraft, type LedgerEntry, type Uuid } from "./index";
+import { detectAnomalies, seal, type EntryDraft, type LedgerEntry, type Member, type Uuid } from "./index";
 import { ALICE, BOB, CHAIR, GROUP, Ledger, MEMBERS, TREASURER } from "./testing/fixtures";
 
-const NONE = { amount: null, loanId: null, termMonths: null, interestAmount: null, dueDate: null, reversesEntryId: null, reason: null } as const;
+const NONE = { amount: null, loanId: null, termMonths: null, interestAmount: null, dueDate: null, reversesEntryId: null, confirmsEntryId: null, reason: null } as const;
 let counter = 0;
 const id = () => `dddddddd-0000-4000-8000-${(++counter).toString(16).padStart(12, "0")}`;
 
@@ -114,6 +114,61 @@ describe("task 14: approval and limit rules", () => {
   });
 });
 
+describe("task 15a: DEPOSIT_WITHOUT_REQUEST (R12.10)", () => {
+  const confirmation = (subject: Uuid, amount: number, confirmsEntryId: Uuid, actor: Uuid = TREASURER.id) => ({
+    ...NONE,
+    type: "DEPOSIT_CONFIRMATION" as const,
+    subjectMemberId: subject,
+    actorMemberId: actor,
+    channel: "dashboard" as const,
+    occurredAt: "2026-03-03T07:13:00.000Z", // 10:13 Kampala
+    idempotencyKey: null,
+    amount,
+    confirmsEntryId,
+  });
+  const sentence = (why: string) => `UGX 50,000 was credited to Person 3's savings on 2026-03-03 10:13 (Kampala time) ${why}.`;
+
+  it("command-built deposits raise nothing", () => {
+    const l = new Ledger();
+    l.deposit(ALICE, 50_000);
+    l.deposit(CHAIR, 10_000);
+    expect(detect(l.entries)).toEqual([]);
+  });
+
+  it.each([
+    ["no request at all", (r: LedgerEntry) => confirmation(ALICE.id, 50_000, `${r.id.slice(0, -1)}f`), "with no matching deposit request"],
+    ["a request of another member", (r: LedgerEntry) => confirmation(ALICE.id, 50_000, r.id), "with no matching deposit request", BOB],
+    ["a different amount", (r: LedgerEntry) => confirmation(ALICE.id, 50_000, r.id), "with no matching deposit request", ALICE, 5_000],
+    ["self-confirmed", (r: LedgerEntry) => confirmation(ALICE.id, 50_000, r.id, ALICE.id), "and was confirmed by the depositor themselves"],
+  ] as [string, (r: LedgerEntry) => ReturnType<typeof confirmation>, string, Member?, number?][])("flags %s", (_name, make, why, requester = ALICE, requested = 50_000) => {
+    const l = new Ledger();
+    const req = l.requestDeposit(requester, requested);
+    const entries = [...l.entries];
+    const forged = forge(entries, make(req));
+    expect(detect(entries)).toEqual([
+      {
+        id: `DEPOSIT_WITHOUT_REQUEST:${forged.id}`,
+        rule: "DEPOSIT_WITHOUT_REQUEST",
+        severity: "high",
+        memberId: ALICE.id,
+        entryIds: [forged.id],
+        explanation: sentence(why),
+      },
+    ]);
+  });
+
+  it("flags a second confirmation of the same request", () => {
+    const l = new Ledger();
+    const req = l.requestDeposit(ALICE, 50_000);
+    l.must(l.by(CHAIR, { kind: "confirmDeposit", requestEntryId: req.id }));
+    const entries = [...l.entries];
+    const second = forge(entries, confirmation(ALICE.id, 50_000, req.id));
+    expect(detect(entries).map((a) => [a.rule, a.entryIds[0], a.explanation])).toEqual([
+      ["DEPOSIT_WITHOUT_REQUEST", second.id, sentence("for a deposit request that was already confirmed")],
+    ]);
+  });
+});
+
 describe("task 15: reversal and out-of-hours rules", () => {
   const reversal = (subject: Uuid, occurredAt: string, amount = 5_000) => ({
     ...NONE,
@@ -129,7 +184,7 @@ describe("task 15: reversal and out-of-hours rules", () => {
   });
   const deposit = (subject: Uuid, occurredAt: string, amount = 2_000) => ({
     ...NONE,
-    type: "DEPOSIT" as const,
+    type: "DEPOSIT_REQUEST" as const,
     subjectMemberId: subject,
     actorMemberId: subject,
     channel: "ussd" as const,

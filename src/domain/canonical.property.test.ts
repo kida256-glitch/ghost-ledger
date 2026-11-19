@@ -27,11 +27,15 @@ describe("canonical properties", () => {
 
   it("P7 R5.1 changing any one hashed field changes the canonical string and the hash", () => {
     fc.assert(
-      fc.property(ledgerEntryArb, ledgerEntryArb, fc.constantFrom(...CANONICAL_FIELDS), (e, other, field) => {
-        fc.pre(JSON.stringify(e[field]) !== JSON.stringify(other[field]));
-        const changed = { ...e, [field]: other[field] } as UnhashedEntry;
-        expect(canonicalize(changed)).not.toBe(canonicalize(e));
-        expect(hashEntry(changed)).not.toBe(e.hash);
+      // Every field on every run (not one random field), so rarely-set fields like
+      // `reason` and `confirmsEntryId` are always exercised.
+      fc.property(ledgerEntryArb, ledgerEntryArb, fc.string({ minLength: 1, maxLength: 5 }), (e, other, text) => {
+        for (const field of CANONICAL_FIELDS) {
+          const replacement = JSON.stringify(e[field]) !== JSON.stringify(other[field]) ? other[field] : e[field] === null ? text : null;
+          const changed = { ...e, [field]: replacement } as UnhashedEntry;
+          expect(canonicalize(changed)).not.toBe(canonicalize(e));
+          expect(hashEntry(changed)).not.toBe(e.hash);
+        }
       }),
     );
   });
@@ -47,7 +51,7 @@ describe("canonical properties", () => {
           fc.pre(other !== e.subjectMemberId);
           const actorMemberId = who === "subject" ? e.subjectMemberId : who === "other" ? other : null;
           const expected =
-            channel === "ussd" ? who === "subject" : channel === "dashboard" ? who !== "none" : who === "none";
+            channel === "ussd" ? who === "subject" : channel === "dashboard" ? who !== "none" : channel === "seed" ? true : who === "none";
           const changed = { ...e, channel, actorMemberId } as UnhashedEntry;
           expect(ledgerEntrySchema.safeParse({ ...changed, hash: hashEntry(changed) }).success).toBe(expected);
         },

@@ -28,6 +28,16 @@ export interface LoanRecord {
   readonly repaymentIds: readonly Uuid[];
 }
 
+export type DepositStatus = "pending" | "confirmed";
+
+export interface DepositRecord {
+  readonly requestEntryId: Uuid;
+  readonly memberId: Uuid;
+  readonly amount: number;
+  readonly status: DepositStatus;
+  readonly confirmationEntryId: Uuid | null;
+}
+
 /** What replay keeps about each entry, for reversals. */
 export interface EntryRecord {
   readonly id: Uuid;
@@ -54,6 +64,8 @@ export interface LedgerState {
   readonly groupCash: number;
   /** In chain order of first appearance. */
   readonly loans: ReadonlyMap<Uuid, LoanRecord>;
+  /** Deposit requests by request entry id, in chain order (R9). */
+  readonly deposits: ReadonlyMap<Uuid, DepositRecord>;
   readonly entries: ReadonlyMap<Uuid, EntryRecord>;
 }
 
@@ -67,6 +79,7 @@ interface Draft {
   socialFund: Map<Uuid, number>;
   groupCash: number;
   loans: Map<Uuid, LoanRecord>;
+  deposits: Map<Uuid, DepositRecord>;
   entries: Map<Uuid, EntryRecord>;
 }
 
@@ -89,10 +102,20 @@ const NOT_DISBURSED = {
 function apply(d: Draft, e: LedgerEntry): void {
   const amount = e.amount ?? 0;
   switch (e.type) {
-    case "DEPOSIT":
+    case "DEPOSIT_REQUEST":
+      // R9.1: no balance changes until a leader confirms.
+      if (!d.deposits.has(e.id)) {
+        d.deposits.set(e.id, { requestEntryId: e.id, memberId: e.subjectMemberId, amount: e.amount, status: "pending", confirmationEntryId: null });
+      }
+      break;
+    case "DEPOSIT_CONFIRMATION": {
+      // As stored: a forged confirmation still credits savings (detectAnomalies flags it).
       add(d.savings, e.subjectMemberId, amount);
       d.groupCash += amount;
+      const request = d.deposits.get(e.confirmsEntryId);
+      if (request?.status === "pending") d.deposits.set(request.requestEntryId, { ...request, status: "confirmed", confirmationEntryId: e.id });
       break;
+    }
     case "SOCIAL_FUND_CONTRIBUTION":
       add(d.socialFund, e.subjectMemberId, amount);
       d.groupCash += amount;
@@ -175,7 +198,8 @@ function reverse(d: Draft, targetId: Uuid): void {
   if (!t || t.reversed || t.amount === null) return;
   const amount = t.amount;
   switch (t.type) {
-    case "DEPOSIT":
+    case "DEPOSIT_CONFIRMATION":
+      // The request stays confirmed (consumed); a correction is a new request.
       add(d.savings, t.subjectMemberId, -amount);
       d.groupCash -= amount;
       break;
@@ -221,6 +245,7 @@ function draftOf(s: LedgerState): Draft {
     socialFund: new Map(s.socialFund),
     groupCash: s.groupCash,
     loans: new Map(s.loans),
+    deposits: new Map(s.deposits),
     entries: new Map(s.entries),
   };
 }
@@ -236,6 +261,7 @@ export function replay(group: Group, members: readonly Member[], entries: readon
     socialFund: new Map(),
     groupCash: 0,
     loans: new Map(),
+    deposits: new Map(),
     entries: new Map(),
   };
   for (const e of entries) apply(d, e);

@@ -17,7 +17,8 @@ import { err, ok, type Result } from "./result";
 import { addCalendarMonths, isIsoTimestamp, kampalaDate, type IsoTimestamp } from "./time";
 
 export type Command =
-  | { readonly kind: "deposit"; readonly memberId: Uuid; readonly amount: number }
+  | { readonly kind: "requestDeposit"; readonly memberId: Uuid; readonly amount: number }
+  | { readonly kind: "confirmDeposit"; readonly requestEntryId: Uuid }
   | { readonly kind: "contributeSocialFund"; readonly memberId: Uuid; readonly amount: number }
   | { readonly kind: "requestLoan"; readonly memberId: Uuid; readonly principal: number; readonly termMonths: number }
   | { readonly kind: "approveLoan"; readonly loanId: Uuid }
@@ -46,6 +47,7 @@ const NO_FIELDS = {
   interestAmount: null,
   dueDate: null,
   reversesEntryId: null,
+  confirmsEntryId: null,
   reason: null,
 } as const;
 
@@ -54,12 +56,14 @@ function inGroup(state: LedgerState, memberId: Uuid) {
   return m !== undefined && m.groupId === state.group.id ? m : null;
 }
 
+const actorOf = (state: LedgerState, ctx: CommandContext) =>
+  ctx.actorMemberId === null ? undefined : state.members.get(ctx.actorMemberId);
+
 /** R10.11–10.13 shared by approve, reject and disburse. */
 function leaderActionOn(state: LedgerState, loanId: Uuid, ctx: CommandContext): Result<LoanRecord, DomainError> {
   const loan = state.loans.get(loanId);
   if (!loan) return err({ code: "INVALID_LOAN_STATE" });
-  const actor = ctx.actorMemberId === null ? undefined : state.members.get(ctx.actorMemberId);
-  if (!isLeaderOf(actor, state.group.id)) return err({ code: "NOT_A_LEADER" });
+  if (!isLeaderOf(actorOf(state, ctx), state.group.id)) return err({ code: "NOT_A_LEADER" });
   if (ctx.actorMemberId === loan.memberId) return err({ code: "SELF_APPROVAL" });
   return ok(loan);
 }
@@ -76,16 +80,36 @@ function draftFor(state: LedgerState, cmd: Command, ctx: CommandContext): Result
   };
 
   switch (cmd.kind) {
-    case "deposit":
+    case "requestDeposit":
     case "contributeSocialFund": {
       if (!inGroup(state, cmd.memberId)) return err({ code: "MEMBER_NOT_FOUND" });
+      // R9.4: on the dashboard, or for someone else, only a leader can record a deposit request.
+      if (cmd.kind === "requestDeposit" && (ctx.channel === "dashboard" || (ctx.actorMemberId !== null && ctx.actorMemberId !== cmd.memberId))) {
+        if (!isLeaderOf(actorOf(state, ctx), state.group.id)) return err({ code: "NOT_A_LEADER" });
+      }
       const amount = parseUgx(cmd.amount);
       if (!amount.ok) return amount;
-      if (cmd.kind === "deposit" && amount.value < state.group.minDeposit) {
+      if (cmd.kind === "requestDeposit" && amount.value < state.group.minDeposit) {
         return err({ code: "BELOW_MIN_DEPOSIT", minDeposit: state.group.minDeposit });
       }
-      const type = cmd.kind === "deposit" ? "DEPOSIT" : "SOCIAL_FUND_CONTRIBUTION";
+      const type = cmd.kind === "requestDeposit" ? "DEPOSIT_REQUEST" : "SOCIAL_FUND_CONTRIBUTION";
       return ok({ ...base, id: ctx.newId(), type, subjectMemberId: cmd.memberId, amount: amount.value });
+    }
+
+    case "confirmDeposit": {
+      // R9.5–9.7: a pending request, confirmed by a leader who isn't the depositor.
+      const request = state.deposits.get(cmd.requestEntryId);
+      if (!request || request.status !== "pending") return err({ code: "INVALID_DEPOSIT_STATE" });
+      if (!isLeaderOf(actorOf(state, ctx), state.group.id)) return err({ code: "NOT_A_LEADER" });
+      if (ctx.actorMemberId === request.memberId) return err({ code: "SELF_APPROVAL" });
+      return ok({
+        ...base,
+        id: ctx.newId(),
+        type: "DEPOSIT_CONFIRMATION",
+        subjectMemberId: request.memberId,
+        amount: request.amount,
+        confirmsEntryId: request.requestEntryId,
+      });
     }
 
     case "requestLoan": {
@@ -185,6 +209,8 @@ function draftFor(state: LedgerState, cmd: Command, ctx: CommandContext): Result
         const loan = state.loans.get(target.loanId);
         if (loan && loan.repaymentIds.length > 0) return err({ code: "INVALID_REVERSAL" });
       }
+      // R4.12: leaders only.
+      if (!isLeaderOf(actorOf(state, ctx), state.group.id)) return err({ code: "NOT_A_LEADER" });
       if (!reasonSchema.safeParse(cmd.reason).success) return err({ code: "INVALID_REASON" });
       return ok({
         ...base,

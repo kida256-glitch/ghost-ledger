@@ -52,12 +52,25 @@ function expectedError(before: LedgerState, cmd: Command, ctx: CommandContext): 
     actor !== undefined && actor.groupId === g.id && actor.status === "active" && (LEADER_ROLES as readonly string[]).includes(actor.role);
 
   switch (cmd.kind) {
-    case "deposit":
+    case "requestDeposit":
     case "contributeSocialFund":
       if (!inGroup(cmd.memberId)) return { code: "MEMBER_NOT_FOUND" };
+      if (cmd.kind === "requestDeposit" && (ctx.channel === "dashboard" || (ctx.actorMemberId !== null && ctx.actorMemberId !== cmd.memberId)) && !actorIsLeader) {
+        return { code: "NOT_A_LEADER" };
+      }
       if (!validAmount(cmd.amount)) return { code: "INVALID_AMOUNT" };
-      if (cmd.kind === "deposit" && cmd.amount < g.minDeposit) return { code: "BELOW_MIN_DEPOSIT", minDeposit: g.minDeposit };
+      if (cmd.kind === "requestDeposit" && cmd.amount < g.minDeposit) return { code: "BELOW_MIN_DEPOSIT", minDeposit: g.minDeposit };
       return null;
+    case "confirmDeposit": {
+      const request = before.entries.get(cmd.requestEntryId);
+      // Status comes from replay, like loan status in the loan rules below.
+      if (!request || request.type !== "DEPOSIT_REQUEST" || before.deposits.get(cmd.requestEntryId)?.status !== "pending") {
+        return { code: "INVALID_DEPOSIT_STATE" };
+      }
+      if (!actorIsLeader) return { code: "NOT_A_LEADER" };
+      if (ctx.actorMemberId === request.subjectMemberId) return { code: "SELF_APPROVAL" };
+      return null;
+    }
     case "requestLoan": {
       if (!inGroup(cmd.memberId)) return { code: "MEMBER_NOT_FOUND" };
       if (before.members.get(cmd.memberId)?.status === "suspended") return { code: "MEMBER_SUSPENDED" };
@@ -93,12 +106,13 @@ function expectedError(before: LedgerState, cmd: Command, ctx: CommandContext): 
     }
     case "reverseEntry": {
       const t = before.entries.get(cmd.entryId);
-      const money = ["DEPOSIT", "SOCIAL_FUND_CONTRIBUTION", "LOAN_DISBURSEMENT", "LOAN_REPAYMENT"];
+      const money = ["DEPOSIT_CONFIRMATION", "SOCIAL_FUND_CONTRIBUTION", "LOAN_DISBURSEMENT", "LOAN_REPAYMENT"];
       if (!t || !money.includes(t.type) || t.reversed) return { code: "INVALID_REVERSAL" };
       if (t.type === "LOAN_DISBURSEMENT") {
         const repaid = [...before.entries.values()].some((e) => e.type === "LOAN_REPAYMENT" && e.loanId === t.loanId && !e.reversed);
         if (repaid) return { code: "INVALID_REVERSAL" };
       }
+      if (!actorIsLeader) return { code: "NOT_A_LEADER" };
       if (!validReason(cmd.reason)) return { code: "INVALID_REASON" };
       if (t.type !== "LOAN_DISBURSEMENT" && (t.amount ?? 0) > before.groupCash) return { code: "NEGATIVE_BALANCE", balance: "groupCash" };
       return null;
@@ -185,25 +199,39 @@ describe("command properties", () => {
           expect(again.ok).toBe(false);
           expect(st.before).toEqual(snapshot);
         }
-        // The next step always starts from the last accepted state.
+        // The next step always starts from the last accepted state, and every state is
+        // exactly what a fresh replay of the entries accepted so far gives.
+        let accepted = 0;
         s.steps.forEach((st, i) => {
           const next = s.steps[i + 1];
           if (next) expect(next.before).toBe(st.result.ok ? st.result.value.state : st.before);
+          expect(st.before).toEqual(replay(s.group, s.members, s.entries.slice(0, accepted)));
+          if (st.result.ok) accepted++;
         });
       }),
     );
   });
 
-  it("P16 R9.1 R9.2 R9.3 R3.10 deposits and contributions follow the reference model and raise the balance by exactly the amount", () => {
+  it("P16 P28 R9.1 R9.2 R9.3 R9.4 R9.5 R9.6 R9.7 R3.10 deposit requests, confirmations and contributions follow the reference model; only confirmations and contributions raise a balance, by exactly the amount", () => {
     fc.assert(
       fc.property(scenarios, (s) => {
-        for (const st of stepsOf(s, ["deposit", "contributeSocialFund"])) {
+        for (const st of stepsOf(s, ["requestDeposit", "confirmDeposit", "contributeSocialFund"])) {
           expect(outcome(st)).toEqual(expectedError(st.before, st.command, st.ctx));
-          if (!st.result.ok || (st.command.kind !== "deposit" && st.command.kind !== "contributeSocialFund")) continue;
-          const { memberId, amount } = st.command;
-          const map = st.command.kind === "deposit" ? "savings" : "socialFund";
-          expect(st.result.value.state[map].get(memberId)).toBe((st.before[map].get(memberId) ?? 0) + amount);
-          expect(st.result.value.state.groupCash).toBe(st.before.groupCash + amount);
+          if (!st.result.ok) continue;
+          const after = st.result.value.state;
+          if (st.command.kind === "requestDeposit") {
+            // R9.1: a request changes nothing but the list of pending requests.
+            expect(balances(after)).toEqual(balances(st.before));
+            expect(after.deposits.get(st.result.value.entry.id)?.status).toBe("pending");
+            continue;
+          }
+          const { memberId, amount } =
+            st.command.kind === "confirmDeposit"
+              ? { memberId: st.result.value.entry.subjectMemberId, amount: st.result.value.entry.amount ?? 0 }
+              : (st.command as { memberId: string; amount: number });
+          const map = st.command.kind === "confirmDeposit" ? "savings" : "socialFund";
+          expect(after[map].get(memberId)).toBe((st.before[map].get(memberId) ?? 0) + amount);
+          expect(after.groupCash).toBe(st.before.groupCash + amount);
         }
       }),
     );
@@ -276,7 +304,7 @@ describe("command properties", () => {
     );
   });
 
-  it("P14 P17 P21 R8.1 R8.2 R10.8 R10.15 R11.1 R11.2 lending most of the cash: disbursement needs enough cash, repayment is capped at the outstanding, and a reversal that would overdraw the group is rejected", () => {
+  it("P12 P14 P17 P21 R4.8 R8.1 R8.2 R10.8 R10.15 R11.1 R11.2 lending most of the cash: disbursement needs enough cash, repayment is capped at the outstanding, a repaid disbursement can't be reversed, and a reversal that would overdraw the group is rejected", () => {
     // Built directly so that group cash is often close to zero, which random sequences rarely reach.
     fc.assert(
       fc.property(
@@ -302,7 +330,10 @@ describe("command properties", () => {
           };
           const depositIds = deposits.map((amount, i) => {
             const m = members[i + 1] as (typeof members)[number];
-            const r = run({ kind: "deposit", memberId: m.id, amount: Math.max(amount, group.minDeposit) }, ctx(m.id, "ussd"));
+            const req = run({ kind: "requestDeposit", memberId: m.id, amount: Math.max(amount, group.minDeposit) }, ctx(m.id, "ussd"));
+            if (!req.ok) return "";
+            const confirmer = m.id === memberId(0) ? memberId(1) : memberId(0);
+            const r = run({ kind: "confirmDeposit", requestEntryId: req.value.entry.id }, ctx(confirmer));
             return r.ok ? r.value.entry.id : "";
           });
           const limit = group.loanMultiplier * (state.savings.get(borrower.id) ?? 0);
@@ -322,6 +353,13 @@ describe("command properties", () => {
               const r = execute(state, { kind: "repayLoan", memberId: borrower.id, amount: owed + delta }, ctx(borrower.id, "ussd"));
               expect(r.ok ? null : r.error).toEqual(delta > 0 ? { code: "EXCEEDS_OUTSTANDING", outstanding: owed } : null);
             }
+            // R4.8: once anything is repaid, the disbursement can't be reversed.
+            const paid = execute(state, { kind: "repayLoan", memberId: borrower.id, amount: 1 }, ctx(borrower.id, "ussd"));
+            expect(paid.ok).toBe(true);
+            if (paid.ok) {
+              const rev = execute(paid.value.state, { kind: "reverseEntry", entryId: disb.value.entry.id, reason: "Audit" }, ctx(memberId(0)));
+              expect(rev.ok ? null : rev.error).toEqual({ code: "INVALID_REVERSAL" });
+            }
           }
           for (const id of depositIds) {
             const amount = state.entries.get(id)?.amount ?? 0;
@@ -331,6 +369,55 @@ describe("command properties", () => {
           }
         },
       ),
+    );
+  });
+
+  it("P28 R9.5 R9.6 R9.8 every confirmation confirms one earlier pending request of the same member and amount, by a different leader; loan limits count confirmed deposits only", () => {
+    fc.assert(
+      fc.property(scenarios, (s) => {
+        const seen = new Map<string, { memberId: string; amount: number; confirmed: boolean }>();
+        for (const st of s.steps) {
+          if (!st.result.ok) continue;
+          const e = st.result.value.entry;
+          if (e.type === "DEPOSIT_REQUEST") seen.set(e.id, { memberId: e.subjectMemberId, amount: e.amount, confirmed: false });
+          if (e.type === "DEPOSIT_CONFIRMATION") {
+            const req = seen.get(e.confirmsEntryId);
+            expect(req).toMatchObject({ memberId: e.subjectMemberId, amount: e.amount, confirmed: false });
+            expect(e.actorMemberId).not.toBe(e.subjectMemberId);
+            const actor = st.before.members.get(e.actorMemberId ?? "");
+            expect(actor?.role).not.toBe("member");
+            seen.set(e.confirmsEntryId, { ...(req as { memberId: string; amount: number }), confirmed: true });
+          }
+          // Brute force: savings = confirmations minus reversed confirmations, from the raw entries so far.
+          const upto = s.entries.slice(0, s.entries.indexOf(e) + 1);
+          const reversed = new Set(upto.flatMap((x) => (x.type === "REVERSAL" ? [x.reversesEntryId] : [])));
+          for (const m of s.members) {
+            const confirmedSavings = upto
+              .filter((x) => x.type === "DEPOSIT_CONFIRMATION" && x.subjectMemberId === m.id && !reversed.has(x.id))
+              .reduce((a, x) => a + (x.amount ?? 0), 0);
+            expect(st.result.value.state.savings.get(m.id) ?? 0).toBe(confirmedSavings);
+          }
+        }
+      }),
+    );
+  });
+
+  it("P29 R4.12 reversals by a non-leader are always rejected with NOT_A_LEADER", () => {
+    fc.assert(
+      fc.property(scenarios, fc.nat(), (s, pickActor) => {
+        const nonLeaders = s.members.filter((m) => m.role === "member" || m.status === "suspended" || m.groupId !== s.group.id);
+        const actor = nonLeaders[pickActor % Math.max(1, nonLeaders.length)];
+        if (!actor) return;
+        const ctx: CommandContext = { now: s.state.headOccurredAt ?? "2026-01-03T07:00:00.000Z", newId: idSeq(), channel: "dashboard", actorMemberId: actor.id };
+        for (const [id, rec] of s.state.entries) {
+          const r = execute(s.state, { kind: "reverseEntry", entryId: id, reason: "Audit" }, ctx);
+          const targetOk = ["DEPOSIT_CONFIRMATION", "SOCIAL_FUND_CONTRIBUTION", "LOAN_DISBURSEMENT", "LOAN_REPAYMENT"].includes(rec.type) && !rec.reversed;
+          expect(r.ok).toBe(false);
+          if (targetOk && !(rec.type === "LOAN_DISBURSEMENT" && (s.state.loans.get(rec.loanId ?? "")?.repaymentIds.length ?? 0) > 0)) {
+            expect(r.ok ? null : r.error).toEqual({ code: "NOT_A_LEADER" });
+          }
+        }
+      }),
     );
   });
 

@@ -5,7 +5,7 @@ import type { Hash, UnhashedEntry } from "./entry";
 export const GENESIS_HASH: Hash = "0".repeat(64);
 
 /** Field 0 of the canonical array. A future format gets a new tag. */
-export const ENTRY_FORMAT_TAG = "ghost-ledger/entry/v1";
+export const ENTRY_FORMAT_TAG = "ghost-ledger/entry/v2";
 
 /** Canonical field order (design §2.1), after the format tag. */
 export const CANONICAL_FIELDS = [
@@ -24,6 +24,7 @@ export const CANONICAL_FIELDS = [
   "interestAmount",
   "dueDate",
   "reversesEntryId",
+  "confirmsEntryId",
   "reason",
   "prevHash",
 ] as const satisfies readonly (keyof UnhashedEntry)[];
@@ -57,6 +58,7 @@ export function canonicalize(entry: UnhashedEntry): string {
     int(opt(entry.interestAmount)),
     opt(entry.dueDate),
     opt(entry.reversesEntryId),
+    opt(entry.confirmsEntryId),
     opt(entry.reason),
     entry.prevHash,
   ]);

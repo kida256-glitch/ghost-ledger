@@ -22,6 +22,7 @@ export type DomainError =
   | { readonly code: "EXCEEDS_LOAN_LIMIT"; readonly limit: number } // 10.4, 10.14
   | { readonly code: "INVALID_TERM" } // 10.5
   | { readonly code: "INVALID_LOAN_STATE" } // 10.13
+  | { readonly code: "INVALID_DEPOSIT_STATE" } // 9.7
   | { readonly code: "SELF_APPROVAL" } // 10.12
   | { readonly code: "INSUFFICIENT_GROUP_CASH" } // 10.15
   | { readonly code: "EXCEEDS_OUTSTANDING"; readonly outstanding: number } // 11.2

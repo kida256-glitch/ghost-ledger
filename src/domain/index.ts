@@ -34,7 +34,8 @@ export {
 } from "./entry";
 export type {
   Channel,
-  DepositEntry,
+  DepositConfirmationEntry,
+  DepositRequestEntry,
   EntryDraft,
   EntryType,
   Hash,
@@ -66,7 +67,7 @@ export {
 } from "./member";
 export type { Member, MemberRole, MemberStatus, Phone } from "./member";
 export { applyEntry, loanOutstanding, loanStatus, replay, replayVisiting, withMember } from "./replay";
-export type { EntryRecord, LedgerState, LoanRecord, LoanStage, LoanStatus } from "./replay";
+export type { DepositRecord, DepositStatus, EntryRecord, LedgerState, LoanRecord, LoanStage, LoanStatus } from "./replay";
 export {
   activeLoan,
   groupSummary,

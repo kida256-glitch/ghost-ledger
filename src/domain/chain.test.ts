@@ -10,7 +10,7 @@ function deposit(n: number, groupId = GROUP): EntryDraft {
   return {
     id: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
     groupId,
-    type: "DEPOSIT",
+    type: "DEPOSIT_REQUEST",
     subjectMemberId: MEMBER,
     actorMemberId: null,
     occurredAt: new Date(Date.UTC(2026, 0, 1) + n * 60_000).toISOString(),
@@ -22,6 +22,7 @@ function deposit(n: number, groupId = GROUP): EntryDraft {
     interestAmount: null,
     dueDate: null,
     reversesEntryId: null,
+    confirmsEntryId: null,
     reason: null,
   };
 }

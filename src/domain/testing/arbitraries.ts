@@ -53,14 +53,16 @@ export function entryDraftArb(groupId?: Uuid): fc.Arbitrary<EntryDraft> {
       groupId: groupId === undefined ? uuidArb : fc.constant(groupId),
       subjectMemberId: uuidArb,
       otherActor: uuidArb,
+      seedActor: fc.boolean(),
       occurredAt: timestampArb,
       channel: fc.constantFrom(...CHANNELS),
       idempotencyKey: fc.option(idempotencyKeyArb, { nil: null }),
     })
-    .map(({ otherActor, ...c }) => ({
+    .map(({ otherActor, seedActor, ...c }) => ({
       ...c,
       // R4.10: actor follows the channel.
-      actorMemberId: c.channel === "ussd" ? c.subjectMemberId : c.channel === "dashboard" ? otherActor : null,
+      actorMemberId:
+        c.channel === "ussd" ? c.subjectMemberId : c.channel === "dashboard" ? otherActor : c.channel === "seed" && seedActor ? otherActor : null,
     }));
   const none = {
     amount: null,
@@ -69,11 +71,15 @@ export function entryDraftArb(groupId?: Uuid): fc.Arbitrary<EntryDraft> {
     interestAmount: null,
     dueDate: null,
     reversesEntryId: null,
+    confirmsEntryId: null,
     reason: null,
   } as const;
 
   return fc.oneof(
-    fc.tuple(common, amountArb).map(([c, amount]): EntryDraft => ({ ...c, ...none, type: "DEPOSIT", amount })),
+    fc.tuple(common, amountArb).map(([c, amount]): EntryDraft => ({ ...c, ...none, type: "DEPOSIT_REQUEST", amount })),
+    fc
+      .tuple(common, amountArb, uuidArb)
+      .map(([c, amount, confirmsEntryId]): EntryDraft => ({ ...c, ...none, type: "DEPOSIT_CONFIRMATION", amount, confirmsEntryId })),
     fc
       .tuple(common, amountArb)
       .map(([c, amount]): EntryDraft => ({ ...c, ...none, type: "SOCIAL_FUND_CONTRIBUTION", amount })),
@@ -186,8 +192,21 @@ export const membersArb: fc.Arbitrary<Member[]> = fc
         registeredAt: SCENARIO_START,
         authUserId: null,
       }),
-    ).concat([OUTSIDER]),
+    ).concat([SUSPENDED_LEADER, OUTSIDER]),
   );
+
+/** A suspended secretary: not a leader while suspended (glossary), so leader actions by them must fail. */
+export const SUSPENDED_LEADER: Member = {
+  id: memberId(98),
+  groupId: SCENARIO_GROUP_ID,
+  displayName: "Suspended secretary",
+  phone: "+256799999998",
+  role: "secretary",
+  status: "suspended",
+  registeredBy: null,
+  registeredAt: SCENARIO_START,
+  authUserId: null,
+};
 
 /** A chair of another group: commands naming them must fail (MEMBER_NOT_FOUND, NOT_A_LEADER). */
 export const OUTSIDER: Member = {
@@ -210,7 +229,8 @@ const rawAmountArb = fc.oneof(
 
 /** An intent picks members, loans and entries by index; it is resolved against the current state. */
 export type Intent =
-  | { kind: "deposit" | "contributeSocialFund"; member: number; amount: number; viaDashboard: boolean; leader: number }
+  | { kind: "requestDeposit" | "contributeSocialFund"; member: number; amount: number; viaDashboard: boolean; leader: number }
+  | { kind: "confirmDeposit"; deposit: number; actor: number }
   | { kind: "requestLoan"; member: number; permille: number; termMonths: number; raw: number | null; exact: number | null }
   | { kind: "approveLoan" | "disburseLoan"; loan: number; actor: number }
   | { kind: "rejectLoan"; loan: number; actor: number; reason: string }
@@ -229,7 +249,8 @@ const sometimes = <T>(arb: fc.Arbitrary<T>) => fc.oneof(fc.constant(null), arb);
 const shortReason = fc.oneof(fc.constantFrom("Wrong amount", "Duplicate", "Ensobi — é💰"), fc.constant(""));
 
 export const intentArb: fc.Arbitrary<Intent> = fc.oneof(
-  { weight: 6, arbitrary: fc.record({ kind: fc.constant("deposit" as const), member: pick, amount: rawAmountArb, viaDashboard: fc.boolean(), leader: pick }) },
+  { weight: 6, arbitrary: fc.record({ kind: fc.constant("requestDeposit" as const), member: pick, amount: rawAmountArb, viaDashboard: fc.boolean(), leader: pick }) },
+  { weight: 6, arbitrary: fc.record({ kind: fc.constant("confirmDeposit" as const), deposit: recent, actor: pick }) },
   { weight: 2, arbitrary: fc.record({ kind: fc.constant("contributeSocialFund" as const), member: pick, amount: rawAmountArb, viaDashboard: fc.boolean(), leader: pick }) },
   {
     weight: 4,
@@ -294,13 +315,18 @@ export function resolveIntent(
   const dash = (id: Uuid): CommandContext => ({ now, newId, channel: "dashboard", actorMemberId: id });
   const loanIds = [...state.loans.keys()].reverse();
   switch (intent.kind) {
-    case "deposit":
+    case "requestDeposit":
     case "contributeSocialFund": {
       const id = member(intent.member);
       return {
         command: { kind: intent.kind, memberId: id, amount: intent.amount },
         ctx: intent.viaDashboard ? dash(member(intent.leader)) : self(id),
       };
+    }
+    case "confirmDeposit": {
+      // Newest requests first, of any status, so double confirmations are tried too.
+      const requestIds = [...state.deposits.keys()].reverse();
+      return { command: { kind: "confirmDeposit", requestEntryId: at(requestIds, intent.deposit) ?? UNKNOWN_ENTRY }, ctx: dash(member(intent.actor)) };
     }
     case "requestLoan": {
       const id = member(intent.member);
@@ -334,7 +360,7 @@ export function resolveIntent(
       };
     }
     case "unknownMember":
-      return { command: { kind: "deposit", memberId: UNKNOWN_MEMBER, amount: intent.amount }, ctx: self(UNKNOWN_MEMBER) };
+      return { command: { kind: "requestDeposit", memberId: UNKNOWN_MEMBER, amount: intent.amount }, ctx: self(UNKNOWN_MEMBER) };
   }
 }
 
@@ -379,7 +405,10 @@ export function scenarioArb(opts: { maxSteps?: number } = {}): fc.Arbitrary<Scen
       // Start with one savings round so that loans are possible early on.
       fc.array(fc.integer({ min: group.minDeposit, max: 60_000 }), { minLength: members.length, maxLength: members.length }).map(
         (amounts) => {
-          const warmup: Intent[] = amounts.map((amount, i) => ({ kind: "deposit", member: i, amount, viaDashboard: false, leader: 0 }));
+          const warmup: Intent[] = amounts.flatMap((amount, i): Intent[] => [
+            { kind: "requestDeposit", member: i, amount, viaDashboard: false, leader: 0 },
+            { kind: "confirmDeposit", deposit: 0, actor: i === 0 ? 1 : 0 },
+          ]);
           return runScenario(group, members, [...warmup, ...intents], gaps);
         },
       ),

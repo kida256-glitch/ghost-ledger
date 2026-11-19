@@ -1,5 +1,5 @@
 import type { Uuid } from "./entry";
-import { loanOutstanding, loanStatus, type LedgerState, type LoanRecord, type LoanStatus } from "./replay";
+import { loanOutstanding, loanStatus, type DepositRecord, type LedgerState, type LoanRecord, type LoanStatus } from "./replay";
 import { kampalaDate, kampalaDaysBetween, type CalendarDate, type IsoTimestamp } from "./time";
 
 /** R10.1: loan multiplier × current savings balance (never below 0). */
@@ -64,6 +64,8 @@ export interface MemberSummary {
   /** Outstanding on the member's disbursed loans. */
   readonly outstanding: number;
   readonly loans: readonly LoanView[];
+  /** The member's deposit requests, pending and confirmed, in chain order (R9). */
+  readonly deposits: readonly DepositRecord[];
 }
 
 /** R7.2. Null if the member isn't in the group. */
@@ -78,6 +80,7 @@ export function memberSummary(state: LedgerState, memberId: Uuid): MemberSummary
     loanLimit: loanLimit(state, memberId),
     outstanding: loans.reduce((sum, l) => sum + (l.outstanding ?? 0), 0),
     loans,
+    deposits: [...state.deposits.values()].filter((d) => d.memberId === memberId),
   };
 }
 
@@ -88,6 +91,8 @@ export interface GroupSummary {
   readonly totalOutstanding: number;
   /** Loans awaiting approval (`requested`) or disbursement (`approved`), in request order. */
   readonly pendingLoans: readonly LoanView[];
+  /** Deposit requests waiting for a leader to confirm them (R9.5), in request order. */
+  readonly pendingDeposits: readonly DepositRecord[];
 }
 
 /** R7.3, R7.4. Totals cover every subject in the ledger, including forged ones. */
@@ -100,6 +105,7 @@ export function groupSummary(state: LedgerState): GroupSummary {
     groupCash: state.groupCash,
     totalOutstanding: views.reduce((a, l) => a + (l.outstanding ?? 0), 0),
     pendingLoans: views.filter((l) => l.status === "requested" || l.status === "approved"),
+    pendingDeposits: [...state.deposits.values()].filter((d) => d.status === "pending"),
   };
 }
 
