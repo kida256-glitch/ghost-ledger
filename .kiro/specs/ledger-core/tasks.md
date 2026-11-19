@@ -66,7 +66,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
       - 21:00 UTC is the next day in Kampala;
       - timestamps with 2 or 4 fraction digits are rejected.
 
-- [ ] 6. `entry.ts` and `canonical.ts`
+- [x] 6. `entry.ts` and `canonical.ts`
   - Contents: the `LedgerEntry` union and zod schema (lowercase UUIDs, per-type fields), `canonicalize`, `hashEntry`, `GENESIS_HASH`.
   - Covers: 4.1–4.4, 5.1, 5.2.
   - Tests:

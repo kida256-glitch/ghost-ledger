@@ -18,3 +18,34 @@ export {
   toEpochMs,
 } from "./time";
 export type { CalendarDate, IsoTimestamp } from "./time";
+export {
+  CHANNELS,
+  ENTRY_TYPES,
+  MONEY_ENTRY_TYPES,
+  hashSchema,
+  idempotencyKeySchema,
+  isMoneyEntryType,
+  ledgerEntrySchema,
+  parseLedgerEntry,
+  reasonSchema,
+  uuidSchema,
+} from "./entry";
+export type {
+  Channel,
+  DepositEntry,
+  EntryDraft,
+  EntryType,
+  Hash,
+  LedgerEntry,
+  LoanApprovalEntry,
+  LoanDisbursementEntry,
+  LoanRejectionEntry,
+  LoanRepaymentEntry,
+  LoanRequestEntry,
+  MoneyEntryType,
+  ReversalEntry,
+  SocialFundEntry,
+  UnhashedEntry,
+  Uuid,
+} from "./entry";
+export { CANONICAL_FIELDS, ENTRY_FORMAT_TAG, GENESIS_HASH, canonicalize, hashEntry } from "./canonical";
