@@ -5,6 +5,9 @@
 //   node scripts/hooks/saved-file.mjs run "<cmd>" ["<cmd>" ...]
 //       Runs each command in order from the workspace root, with every `{file}`
 //       replaced by the quoted relative path. Stops at the first failure.
+//       Each command's exit code and last 20 output lines are appended to
+//       RUN_LOG in the OS temp dir (never the repo), so hook results can be
+//       checked afterwards: %TEMP%\ghost-ledger-hook-runs.log on Windows.
 //   --file <path> (optional, either mode)
 //       Fallback path when the STDIN event has none (e.g. from `{{filePath}}`).
 //
@@ -17,7 +20,7 @@
 // metadata only; nothing secret is expected in them.
 
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,8 +194,75 @@ async function main() {
   for (const command of commands) {
     const filled = fillCommand(command, resolved.relative);
     process.stdout.write(`> ${filled}\n`);
-    const result = spawnSync(filled, { cwd: resolved.root, shell: true, stdio: "inherit" });
-    if (result.status !== 0) process.exit(result.status ?? 1);
+    const result = spawnSync(filled, {
+      cwd: resolved.root,
+      shell: true,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      env: { ...process.env, FORCE_COLOR: "0" },
+    });
+    const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+    process.stdout.write(result.stdout ?? "");
+    process.stderr.write(result.stderr ?? "");
+    const status = result.status ?? 1;
+    try {
+      appendRunLog(RUN_LOG, {
+        at: new Date().toISOString(),
+        file: resolved.relative,
+        command: filled,
+        exitCode: status,
+        output,
+      });
+    } catch {
+      // Diagnostics only: never fail a hook because the log can't be written.
+    }
+    if (status !== 0) process.exit(status);
+  }
+}
+
+/** Lines of output kept per command in the run log. */
+export const RUN_LOG_TAIL_LINES = 20;
+/** The log is truncated to its newest half once it passes this size. */
+const RUN_LOG_MAX_BYTES = 512 * 1024;
+
+// Outside the repo by design: the OS temp dir (tests override the path).
+export const RUN_LOG =
+  process.env.GHOST_LEDGER_HOOK_RUN_LOG || join(tmpdir(), "ghost-ledger-hook-runs.log");
+
+const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
+
+/**
+ * Formats one run: a header line with time, file, exit code and command,
+ * then the last RUN_LOG_TAIL_LINES non-empty lines of output, indented.
+ *
+ * @param {{ at: string, file: string, command: string, exitCode: number, output: string }} run
+ */
+export function formatRun(run) {
+  const lines = run.output
+    .replace(ANSI, "")
+    .split(/\r?\n/)
+    .filter((l) => l.trim() !== "")
+    .slice(-RUN_LOG_TAIL_LINES);
+  return [
+    `=== ${run.at} exit=${run.exitCode} file=${run.file}`,
+    `$ ${run.command}`,
+    ...lines.map((l) => `  ${l}`),
+    "",
+  ].join("\n");
+}
+
+/**
+ * Appends a run to the log file, keeping the file bounded.
+ *
+ * @param {string} logPath
+ * @param {{ at: string, file: string, command: string, exitCode: number, output: string }} run
+ */
+export function appendRunLog(logPath, run) {
+  appendFileSync(logPath, formatRun(run));
+  if (statSync(logPath).size > RUN_LOG_MAX_BYTES) {
+    const text = readFileSync(logPath, "utf8");
+    const keepFrom = text.indexOf("=== ", Math.floor(text.length / 2));
+    writeFileSync(logPath, keepFrom === -1 ? "" : text.slice(keepFrom));
   }
 }
 

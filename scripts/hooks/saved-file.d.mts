@@ -6,4 +6,9 @@ export declare function resolveSavedFile(
   options: { cwd: string; fallbackPath?: string },
 ): { ok: true; root: string; relative: string } | { ok: false; error: string };
 export declare function parseArgs(argv: string[]): { fallbackPath?: string; commands: string[] };
+export declare const RUN_LOG: string;
+export declare const RUN_LOG_TAIL_LINES: number;
+export type HookRun = { at: string; file: string; command: string; exitCode: number; output: string };
+export declare function formatRun(run: HookRun): string;
+export declare function appendRunLog(logPath: string, run: HookRun): void;
 export declare function fillCommand(command: string, relative: string): string;

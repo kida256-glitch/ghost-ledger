@@ -1,11 +1,12 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   extractSavedPath,
   fillCommand,
+  formatRun,
   parseArgs,
   resolveSavedFile,
   toWorkspaceRelative,
@@ -137,6 +138,59 @@ describe("parseArgs and fillCommand", () => {
       expect(() => fillCommand("x {file}", p)).toThrow(/unsafe/);
     },
   );
+});
+
+describe("run log", () => {
+  it("defaults to the OS temp dir, outside the repo", () => {
+    const def = spawnSync(
+      process.execPath,
+      ["--input-type=module", "-e", 'import("./scripts/hooks/saved-file.mjs").then(m => console.log(m.RUN_LOG))'],
+      { encoding: "utf8", env: { ...process.env, GHOST_LEDGER_HOOK_RUN_LOG: "" } }, // empty = use the default
+    );
+    expect(def.status).toBe(0);
+    const logPath = def.stdout.trim();
+    expect(logPath.startsWith(tmpdir())).toBe(true);
+    expect(logPath.toLowerCase().startsWith(process.cwd().toLowerCase())).toBe(false);
+  });
+
+  it("formatRun keeps the command, exit code and last 20 non-empty lines without colour codes", () => {
+    const output = Array.from({ length: 30 }, (_, i) => `\u001b[32mline ${i + 1}\u001b[39m`).join("\n") + "\n\n";
+    const text = formatRun({ at: "2026-11-19T10:00:00.000Z", file: "src/domain/x.ts", command: "npx vitest", exitCode: 1, output });
+    const lines = text.trimEnd().split("\n");
+    expect(lines[0]).toBe("=== 2026-11-19T10:00:00.000Z exit=1 file=src/domain/x.ts");
+    expect(lines[1]).toBe("$ npx vitest");
+    expect(lines.slice(2)).toEqual(Array.from({ length: 20 }, (_, i) => `  line ${i + 11}`));
+  });
+
+  it("the CLI appends each command's result to the log and stops at the first failure", () => {
+    const dir = mkdtempSync(join(tmpdir(), "saved-file-run-"));
+    const log = join(dir, "runs.log");
+    const script = join(dir, "noisy.mjs");
+    writeFileSync(script, "for (let i = 1; i <= 25; i++) console.log('line ' + i);\nprocess.exit(3);\n");
+    try {
+      const input = JSON.stringify({ cwd: process.cwd(), file_path: join(process.cwd(), "src", "domain", "x.ts") });
+      const env = { ...process.env, GHOST_LEDGER_HOOK_RUN_LOG: log, GHOST_LEDGER_HOOK_LOG: join(dir, "p.json") };
+      const args = ["scripts/hooks/saved-file.mjs", "run", `node "${script}" {file}`, "node -e 0"];
+      const first = spawnSync(process.execPath, args, { input, encoding: "utf8", env });
+      expect(first.status).toBe(3);
+      expect(first.stdout).toContain("line 25");
+
+      const ok = spawnSync(process.execPath, ["scripts/hooks/saved-file.mjs", "run", "node -e 0"], { input, encoding: "utf8", env });
+      expect(ok.status).toBe(0);
+
+      const text = readFileSync(log, "utf8");
+      const headers = text.split("\n").filter((l) => l.startsWith("=== "));
+      expect(headers).toHaveLength(2); // the second command of the first run never ran
+      expect(headers[0]).toMatch(/exit=3 file=src\/domain\/x\.ts$/);
+      expect(headers[1]).toMatch(/exit=0 /);
+      expect(text).toContain(`$ node "${script}" "src/domain/x.ts"`);
+      expect(text).toContain("  line 25");
+      expect(text).toContain("  line 6");
+      expect(text).not.toContain("  line 5\n");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("CLI", () => {

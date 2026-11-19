@@ -155,6 +155,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Tests (PGlite):
     - tables and uniques exist: `(group_id, seq)`, the idempotency key, `phone`;
     - the shape check rejects the wrong columns for a type;
+    - CHECK constraints mirror the TS entry schema exactly: `char_length(reason) between 1 and 120`, `char_length(idempotency_key) between 1 and 128`, no NUL (Postgres `text` rejects it already; the test proves it), lowercase UUIDs, and actor vs channel (R4.10: `ussd` actor = subject, `dashboard` actor present, `seed`/`system` actor null);
     - a sub-millisecond `occurred_at` is rejected;
     - `members` has no PIN or balance columns.
     - A test asserts that no runtime file imports `@electric-sql/pglite`.
@@ -184,6 +185,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Covers: §2.3 (timestamps stored exactly as hashed), §5.1.
   - Tests:
     - P26 (PGlite timestamp round-trip, with `verifyChain` passing on read-back);
+    - a round-trip example with a reason containing double quotes, an em dash, `é` and an emoji: the hash after write and read is identical;
     - env parsing rejects bad URLs;
     - a source-grep test finds no `pg_advisory_lock(` and no `name:` in query configs.
   - Update `.env.example`.

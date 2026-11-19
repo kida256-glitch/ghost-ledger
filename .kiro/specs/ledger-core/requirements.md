@@ -72,6 +72,7 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 7. IF the normalized phone number already belongs to a member of any group, THEN the domain SHALL reject the registration with error `PHONE_ALREADY_REGISTERED`.
 8. A newly registered member SHALL have no PIN. PIN credentials SHALL be stored in a separate member credentials table, not in the members table. Setting and checking the PIN is handled by the ussd-engine spec.
 9. WHILE a member is suspended, the domain SHALL reject loan requests from that member with error `MEMBER_SUSPENDED` and SHALL still accept their deposits and repayments.
+10. IF a command names a member id that is not a member of the group, THEN the domain SHALL reject it with error `MEMBER_NOT_FOUND`. The same error SHALL be returned whether the member does not exist or belongs to another group.
 
 ### Requirement 4: Ledger entries
 
@@ -80,7 +81,7 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 #### Acceptance Criteria
 
 1. The domain SHALL support these entry types: `DEPOSIT` (savings), `SOCIAL_FUND_CONTRIBUTION`, `LOAN_REQUEST`, `LOAN_APPROVAL`, `LOAN_REJECTION`, `LOAN_DISBURSEMENT`, `LOAN_REPAYMENT`, `REVERSAL`.
-2. Each entry SHALL record: id, group id, seq, type, subject member id (whose balance or loan it concerns), actor member id (who recorded it, empty for `seed` and `system`), occurred-at time (UTC, millisecond precision), channel (`ussd`, `dashboard`, `seed`, `system`), optional idempotency key, prev_hash and hash.
+2. Each entry SHALL record: id, group id, seq, type, subject member id (whose balance or loan it concerns), actor member id (who recorded it; see 4.10), occurred-at time (UTC, millisecond precision), channel (`ussd`, `dashboard`, `seed`, `system`), optional idempotency key, prev_hash and hash.
 3. Money entries, `LOAN_REQUEST` and `REVERSAL` entries SHALL record an amount. `LOAN_APPROVAL` and `LOAN_REJECTION` entries SHALL NOT record an amount.
 4. Loan entries SHALL also record: the loan id (all loan types); the term in months (`LOAN_REQUEST`); a reason (`LOAN_REJECTION`); the interest amount, term in months and due date (`LOAN_DISBURSEMENT`). A `REVERSAL` entry SHALL also record the id of the entry it reverses and a reason.
 5. The domain SHALL add entries only at the end of a group's chain, with `seq` one greater than the previous entry (starting at 1). It SHALL expose no operation that modifies or removes an entry.
@@ -88,6 +89,8 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 7. IF a reversal targets an entry that does not exist, belongs to another group, is not a money entry, or has already been reversed, THEN the domain SHALL reject it with error `INVALID_REVERSAL`.
 8. IF a reversal targets a `LOAN_DISBURSEMENT` whose loan has any repayment that is not reversed, THEN the domain SHALL reject it with error `INVALID_REVERSAL`.
 9. IF a new entry's occurred-at time is earlier than the previous entry's in the same group, THEN the domain SHALL reject it with error `OUT_OF_ORDER`.
+10. An entry's actor SHALL match its channel: `ussd` entries SHALL have an actor equal to the subject member (a member acting for themselves); `dashboard` entries SHALL have an actor; `seed` and `system` entries SHALL have no actor. The entry schema SHALL treat any other combination as malformed.
+11. IF a rejection or reversal reason is empty, longer than 120 characters, or contains characters that cannot be stored (NUL or unpaired surrogates), THEN the domain SHALL reject the command with error `INVALID_REASON`.
 
 ### Requirement 5: Hash chain
 

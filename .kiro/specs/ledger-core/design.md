@@ -49,7 +49,7 @@ The representation rules make every hash input deterministic:
 - **Absent fields** are always `null`. They are never omitted and never `""`.
 - **UUIDs** must be lowercase. Postgres prints `uuid` values in lowercase, so an uppercase id would hash differently after a round trip. The domain's zod schema rejects uppercase ids.
 - **Strings** are hashed exactly as stored, with no Unicode normalization. `reason` is 1 to 120 characters, and `idempotencyKey` is 1 to 128 characters.
-- **Version tag.** Field 0 lets a future format coexist. `verifyChain` rejects unknown tags as `MALFORMED_ENTRY`.
+- **Version tag.** Field 0 is the constant `"ghost-ledger/entry/v1"`. It is not a stored column: it exists only inside the canonical string, so it is baked into every hash. Any change to the canonical format needs a new tag and a migration plan for existing chains (for example, verifying old entries with the v1 rules up to a recorded seq). Without both, every stored chain would stop verifying.
 - **Golden vector.** A unit test pins one fixed entry to one fixed hash, so any accidental format change fails CI.
 
 ### 2.2 Genesis hash

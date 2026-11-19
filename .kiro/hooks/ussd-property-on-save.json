@@ -8,7 +8,7 @@
       "matcher": "src[\\\\/]ussd[\\\\/]",
       "action": {
         "type": "command",
-        "command": "npx vitest run src/ussd --testNamePattern \"R.*USSD property\" --passWithNoTests"
+        "command": "node scripts/hooks/saved-file.mjs --file \"{{filePath}}\" run \"npx vitest run src/ussd --testNamePattern \\\"R.*USSD property\\\" --passWithNoTests\""
       },
       "timeout": 180
     }
