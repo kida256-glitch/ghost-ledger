@@ -27,7 +27,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - `eslint-rules.test.ts` uses the ESLint Node API to lint code strings placed at `src/domain/x.ts`. `import pg from "pg"` and `import "../db/x"` must be errors, `import { createHash } from "node:crypto"` must be clean, and `it.only(...)` must be an error.
   - Done when: the Definition of Done passes, and `npm run test:integration` exits 0.
 
-- [ ] 2. Add the Kiro hooks in `.kiro/hooks/`
+- [x] 2. Add the Kiro hooks in `.kiro/hooks/`
   - `scripts/hooks/saved-file.mjs` reads the hook event JSON from STDIN and prints the saved file's workspace-relative path. The Kiro docs don't name the STDIN field for file saves, so first log one real payload, confirm the field, and record it in `KIRO_USAGE.md`.
   - `domain-tests-on-save.json`: `PostFileSave`, matcher `src[\\/]domain[\\/].*\.ts$`, runs `npx vitest related <file> --run`, which covers both example and fast-check tests.
   - `typecheck-lint-on-save.json`: `PostFileSave`, matcher `\.(ts|tsx)$`, runs `npm run typecheck` and then `npx eslint <file>`.
