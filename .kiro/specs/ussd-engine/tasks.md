@@ -2,7 +2,7 @@
 
 Every task ends with the Definition of Done (`npm run typecheck && npm run lint && npm test && npm run build`), a commit, and an update to `KIRO_USAGE.md`. Property titles name the requirement ids they cover. There are no mutation checks for this spec.
 
-- [ ] 1. Pending-deposit cap in ledger-core (design §11.1)
+- [ ] 1. Pending-deposit cap in ledger-core (design §12.1)
   - Spec-first: add ledger-core R9.10, the `PENDING_DEPOSIT_LIMIT` error, the design note and the traceability entry. Then the domain change in `requestDeposit`.
   - Tests: property `R9.10 a member never has more than 3 pending deposit requests`, and examples at 2→3 (accepted) and 3→4 (rejected), and after a confirmation frees a slot.
 
@@ -16,7 +16,9 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
 
 - [ ] 4. PIN module (design §4)
   - `checkNewPin`, the `PinHasher` interface, the argon2id implementation, and adding `@node-rs/argon2`.
-  - Tests: each rule as an example; the real argon2 hash and verify round trip; a wrong PIN fails.
+  - Calibrate the argon2id cost (design §11): a timing script, with the result recorded in design §11.1; one verify under about 100 ms.
+  - Linux build check: `npm ci && npm run build` plus an argon2 smoke script in a `node:24` Docker container.
+  - Tests: each rule as an example; the real argon2 hash and verify round trip; a wrong PIN fails; the parameters in code match §11.1.
 
 - [ ] 5. Replay and engine (design §2, §3, §5, §8)
   - `replay.ts`, `engine.ts` and the logger type, with in-memory fakes in `src/ussd/testing/`.
@@ -32,3 +34,11 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - `src/app/api/ussd/route.ts`, the README security note (the gateway isn't authenticated; the PIN is the only protection), and DEMO.md PowerShell commands to `curl` the endpoint locally (first dial, PIN setup, Balance).
   - Tests: form parsing, the U1.2 limits, the 200 `text/plain` response, and the generic `END` on a dependency error.
   - Done when: the Definition of Done passes, and a manual run against local Supabase completes PIN setup, Save and Balance for a seeded member.
+
+- [ ] 8. Demo PINs and `demo:unlock` (U17, design §11)
+  - `src/seed/demo-pins.ts`, and the seed sets the hashes; `scripts/demo-unlock.ts`; DEMO.md commands. Add the README threat-model note.
+  - Tests: every demo PIN passes `checkNewPin` for its member; exactly one seeded member has no PIN after the seed; after the seed, the demo PIN logs in through the engine on PGlite; `demo:unlock` clears a lockout and the rate-limit rows for that group only, and refuses an unknown group.
+
+- [ ] 9. Keep-alive and the timed USSD request (U16, U18.3)
+  - Add the cron to `vercel.json`, plus a README "Keep-alive" section. Add the timed USSD check to `hosted:check`.
+  - Tests: `vercel.json` has the daily `/api/health` cron and still has `regions: ["fra1"]`; `hosted:check` PASSes a fast Balance screen and FAILs a slow one (2000 ms or more), a non-`END` reply and an HTTP error, using a fake `fetch` and a fake clock.

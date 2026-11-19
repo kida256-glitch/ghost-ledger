@@ -108,6 +108,27 @@ The USSD engine lets members use Ghost Ledger from a feature phone. It handles t
 2. For any session, no log record SHALL contain the PIN or the raw `text`.
 3. For any ledger state, member and input sequence, the engine SHALL never show a confirm screen for, or issue, a command the domain rejects, and SHALL never issue a command other than those in U9.3.
 
+### U16: Keep-alive
+
+1. A Vercel cron job SHALL call `GET /api/health` once a day, so the hosted Supabase project is never idle long enough to pause before the judging period ends (29 January 2027).
+2. The README SHALL document the job, why it exists, and that it can be removed after the judging period.
+
+### U17: Demo accounts
+
+1. The seed SHALL set fixed, fictional PINs for the demo members, except one member left without a PIN so the first-dial setup can be shown. The PINs SHALL follow U6.2 and live in one module that the simulator can import.
+2. `npm run demo:unlock` SHALL connect through `ADMIN_DATABASE_URL` and, for the demo group only, reset PIN failure counts and lockouts and delete the rate-limit rows of its members' phone numbers. It SHALL print counts only.
+3. The README SHALL include a threat-model note: `/api/ussd` has no gateway authentication, so anyone can POST any phone number and the PIN is the only protection; production would need a gateway IP allowlist or signed requests.
+
+### U18: Performance
+
+1. The argon2id parameters SHALL be chosen so one PIN check takes under about 100 ms. The measured time on this machine SHALL be recorded in the design.
+2. `@node-rs/argon2` SHALL load and hash in a Linux production build (checked in a `node:24` container, as a stand-in for Vercel's build image).
+3. `hosted:check` SHALL time a full USSD request (PIN plus Balance) against the deployment, report a cold and a warm time, and fail if the warm request takes 2 seconds or more or does not return the Balance screen.
+
+## Handed to later specs
+
+- **dashboard-simulator:** the simulator page shows the demo members' phone numbers and PINs (the group is fictional), read from the demo PIN module (U17.1), so judges can dial in without setup. It shows the member without a PIN as "first dial: you choose the PIN".
+
 ## Out of scope
 
 - Authenticating the gateway (IP allowlist or shared secret). With the simulator, anyone can POST any phone number; the PIN is the only protection. Noted in the README.

@@ -177,7 +177,24 @@ Route test: form parsing, the U1.2 limits, and the 200 `text/plain` response.
 
 There is no mutation check for this spec.
 
-## 11. Decisions
+## 11. Demo support, keep-alive and performance (U16–U18)
+
+- **Demo PINs.** `src/seed/demo-pins.ts` exports `DEMO_PINS`, a map from seed member id to PIN. It covers every seeded member except one ordinary member, who is left for the first-dial demo. `buildSeed` stays unchanged; the seed script hashes each PIN with the same `PinHasher` as the engine and stores it in `member_credentials`. A test checks every demo PIN against `checkNewPin` and the member's phone.
+- **`npm run demo:unlock`** (`scripts/demo-unlock.ts`, `ADMIN_DATABASE_URL`, optional `--group CODE`, default `TUBEERA`) runs two statements:
+  - `update member_credentials set failed_attempts = 0, locked_until = null` for the group's members;
+  - `delete from ussd_rate_limits where phone_hash = any($1)`, with the SHA-256 hashes of the group's phone numbers.
+
+  It refuses if the group doesn't exist, and prints only the two row counts. It needs no `ALLOW_*` flag because it changes no ledger data.
+- **Keep-alive.** `vercel.json` gets `"crons": [{ "path": "/api/health", "schedule": "0 6 * * *" }]`, which runs daily at 06:00 UTC (09:00 Kampala). The Hobby plan allows one run per day, and Supabase pauses free projects after 7 days of inactivity, so a daily read through the pooler is enough. A Vercel cron was chosen over a GitHub Actions schedule because it needs no stored URL or secret, and GitHub disables schedules on repositories with no commits for 60 days. The route stays unauthenticated and read-only, so the cron needs no secret.
+- **argon2 cost.** The cost is calibrated on this machine, starting from the OWASP minimum (m = 19456 KiB, t = 2, p = 1), and kept only if one verify takes under about 100 ms. The measured value is recorded in §11.1 when task 4 runs. Vercel functions are usually slower per core than a desktop, so the target here is about half of that.
+- **Linux build check.** Inside a `node:24` container: `npm ci`, `npm run build`, then a script that imports `@node-rs/argon2` and hashes and verifies a PIN. `@node-rs/argon2` is in Next.js's default `serverExternalPackages`, so the native `.node` file is loaded at runtime, not bundled.
+- **Timed USSD request in `hosted:check`.** It POSTs `/api/ussd` twice, cold then warm, as the first demo member with text `<PIN>*4` (Balance). It expects `END ` followed by the English Balance screen. PASS needs a warm time under 2000 ms; the cold time is reported only. The check uses a correct PIN, so it never counts a failure, and each run adds 2 requests to that phone's rate-limit window.
+
+### 11.1 Measured
+
+_Filled in by task 4._
+
+## 12. Decisions
 
 1. **Pending-deposit cap (3) is a domain rule.** It is ledger-core R9.10 with error `PENDING_DEPOSIT_LIMIT`, so the dashboard obeys it too and the engine only dry-runs it (tech.md rule 1). testing.md requires a fast-check property for every domain rule, so ledger-core gets one property, `R9.10`. It does not count toward this spec's three.
 2. **The PIN is checked on every request**, because the engine is stateless and the endpoint is public (anyone can POST any phone number through the simulator).
