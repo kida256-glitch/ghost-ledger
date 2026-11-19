@@ -278,7 +278,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - the privilege matrix from task 18, run against local Supabase, including `anon`, `authenticated` and `service_role`.
   - Done when: the Definition of Done passes, and `npx supabase start && npx supabase db reset && npm run test:integration` passes. This needs Docker. If Docker isn't available on this machine, I'll say so and hand the command to you rather than mark the task done.
 
-- [ ] 26. Requirement traceability check
+- [x] 26. Requirement traceability check
   - Contents: `traceability.test.ts` parses `requirements.md` and checks that every acceptance criterion in R1, R3, R4, R5, R6, R9, R10, R11 and R12 appears in at least one fast-check test title, plus the R16.1 list.
   - Covers: 16.1–16.3.
   - Tests: the test itself. It must fail when a criterion id is removed from a test title, which is checked once by hand and recorded in `KIRO_USAGE.md`.

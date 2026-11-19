@@ -53,7 +53,7 @@ describe("task 21: LedgerWriter properties (PGlite as ghost_app)", () => {
     );
   }, 120_000);
 
-  it("R3.7 R3.8 the same number in any accepted format is registered once; new members have an empty credentials row (fast-check)", async () => {
+  it("R3.1 R3.7 R3.8 a member reads back with every stored field; the same number in any accepted format is registered once; new members have an empty credentials row (fast-check)", async () => {
     const { group, chair, writer, phone } = await setup();
     let k = 0;
     await fc.assert(
@@ -63,6 +63,8 @@ describe("task 21: LedgerWriter properties (PGlite as ghost_app)", () => {
         const first = await writer.registerMember(group.id, chair.id, { displayName: `Member ${k}`, phone: `${p1}${digits}` });
         expect(first.ok).toBe(true);
         const id = first.ok ? first.value.id : "";
+        // R3.1: id, group, name, phone, role, status, registrar, time and auth link all round-trip.
+        expect(await writer.getMemberByPhone(first.ok ? first.value.phone : "")).toEqual(first.ok ? first.value : null);
         const creds = await pg_.query("select pin_hash, failed_attempts, locked_until from member_credentials where member_id = $1", [id]);
         expect(creds.rows).toEqual([{ pin_hash: null, failed_attempts: 0, locked_until: null }]);
         const again = await writer.registerMember(group.id, chair.id, { displayName: `Again ${k}`, phone: `${p2}${digits.slice(0, 4)}${sep}${digits.slice(4)}` });

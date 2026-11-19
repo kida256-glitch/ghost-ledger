@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { CANONICAL_FIELDS, GENESIS_HASH, hashEntry, verifyChain, type LedgerEntry, type UnhashedEntry } from "./index";
-import { ledgerEntryArb, sealedChainArb } from "./testing/arbitraries";
+import { entryDraftArb, ledgerEntryArb, sealAll, sealedChainArb, uuidArb } from "./testing/arbitraries";
 
 const nonEmptyChain = sealedChainArb({ minLength: 1, maxLength: 12 });
 const FIELDS = [...CANONICAL_FIELDS, "hash"] as const;
@@ -13,7 +13,7 @@ function tamper(entry: LedgerEntry, donor: LedgerEntry, field: (typeof FIELDS)[n
 }
 
 describe("chain properties", () => {
-  it("P6 R4.5 R5.3 R5.4 sealed chains have contiguous seq, genesis start and correct links, and verify", () => {
+  it("P6 R4.5 R5.3 R5.4 R6.1 sealed chains have contiguous seq, genesis start and correct links, and verify with count and head", () => {
     fc.assert(
       fc.property(sealedChainArb(), (chain) => {
         chain.forEach((e, i) => {
@@ -103,6 +103,25 @@ describe("chain properties", () => {
       }),
     );
   });
+
+  it("R6.9 verifyChain checks generated chains of 1,000 to 10,000 entries within the 2 s budget", () => {
+    fc.assert(
+      fc.property(uuidArb, fc.array(entryDraftArb(), { minLength: 5, maxLength: 5 }), fc.integer({ min: 1_000, max: 10_000 }), (groupId, samples, n) => {
+        // n entries built from a few generated drafts (fresh ids), sealed into one chain.
+        const drafts = Array.from({ length: n }, (_, i) => {
+          const d = samples[i % samples.length] as (typeof samples)[number];
+          return { ...d, groupId, id: `${d.id.slice(0, 24)}${i.toString(16).padStart(12, "0")}` };
+        });
+        const chain = sealAll(drafts);
+        const start = performance.now();
+        const result = verifyChain(chain);
+        expect(result).toMatchObject({ ok: true, count: n });
+        expect(performance.now() - start).toBeLessThan(2_000);
+      }),
+      // Each run seals up to 10,000 entries first, which is the slow part.
+      { numRuns: 5 },
+    );
+  }, 60_000);
 
   it("P9 R6.5 R6.8 verifyChain never throws on arbitrary input and is deterministic", () => {
     const input = fc.oneof(

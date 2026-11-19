@@ -456,6 +456,20 @@ describe("command properties", () => {
     );
   });
 
+  it("R4.9 any command dated before the head is rejected with OUT_OF_ORDER and changes nothing", () => {
+    fc.assert(
+      fc.property(scenarios, fc.integer({ min: 1, max: 10 * 86_400_000 }), fc.nat(), (s, earlierBy, pick) => {
+        const head = s.state.headOccurredAt;
+        const step = s.steps.length === 0 ? undefined : s.steps[pick % s.steps.length];
+        if (head === null || step === undefined) return;
+        const ctx: CommandContext = { ...step.ctx, now: new Date(Date.parse(head) - earlierBy).toISOString() };
+        const before = structuredClone(s.state);
+        expect(execute(s.state, step.command, ctx)).toEqual({ ok: false, error: { code: "OUT_OF_ORDER" } });
+        expect(s.state).toEqual(before);
+      }),
+    );
+  });
+
   it("P13 R7.7 request, approval and rejection entries leave all balances and group cash unchanged", () => {
     fc.assert(
       fc.property(scenarios, (s) => {

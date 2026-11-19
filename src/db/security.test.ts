@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { LedgerEntry } from "../domain";
@@ -166,6 +167,28 @@ describe("task 18: behaviour as ghost_app", () => {
       await db.exec("rollback");
     }
   });
+});
+
+describe("task 18: seed-channel guard as a property", () => {
+  it("R4.13 any seed-channel entry, with or without an actor, is rejected for ghost_app and accepted for the owner (fast-check)", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.boolean(), fc.integer({ min: 2_000, max: 50_000 }), fc.constantFrom("requestDeposit", "contributeSocialFund"), async (withActor, amount, kind) => {
+        const [entry] = await nextEntries((l) =>
+          l.try(
+            kind === "requestDeposit" ? { kind, memberId: ALICE.id, amount } : { kind, memberId: ALICE.id, amount },
+            l.ctx("seed", withActor || kind === "contributeSocialFund" ? CHAIR.id : null),
+          ),
+        );
+        const asApp = await asRole(db, "ghost_app", (tx) => sqlError(() => insertEntry(tx, entry as LedgerEntry)));
+        await db.exec("begin");
+        const asOwner = await sqlError(() => insertEntry(db, entry as LedgerEntry));
+        await db.exec("rollback");
+        expect([asApp?.code, asOwner]).toEqual(["42501", null]);
+      }),
+      // Each run is two inserts (one rolled back) against PGlite.
+      { numRuns: 20 },
+    );
+  }, 60_000);
 });
 
 describe("task 18: behaviour as ghost_readonly", () => {
