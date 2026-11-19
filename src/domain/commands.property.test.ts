@@ -201,12 +201,13 @@ describe("command properties", () => {
         }
         // The next step always starts from the last accepted state, and every state is
         // exactly what a fresh replay of the entries accepted so far gives.
-        let accepted = 0;
+        // (A second, independent replay is built alongside: O(n) instead of a replay per step.)
+        let fresh = replay(s.group, s.members, []);
         s.steps.forEach((st, i) => {
           const next = s.steps[i + 1];
           if (next) expect(next.before).toBe(st.result.ok ? st.result.value.state : st.before);
-          expect(st.before).toEqual(replay(s.group, s.members, s.entries.slice(0, accepted)));
-          if (st.result.ok) accepted++;
+          expect(st.before).toEqual(fresh);
+          if (st.result.ok) fresh = applyEntry(fresh, st.result.value.entry);
         });
       }),
     );

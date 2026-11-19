@@ -55,10 +55,12 @@ export class Ledger {
   state: LedgerState;
   readonly entries: LedgerEntry[] = [];
   private ms = Date.parse("2026-01-10T07:00:00.000Z");
-  private readonly newId = idGenerator();
+  private readonly newId: () => Uuid;
 
-  constructor(group: Group = GROUP, members: readonly Member[] = MEMBERS) {
+  /** `idPrefix` (8 hex characters) keeps entry ids unique across ledgers sharing one database. */
+  constructor(group: Group = GROUP, members: readonly Member[] = MEMBERS, idPrefix = "e0000000") {
     this.state = replay(group, members, []);
+    this.newId = idGenerator(idPrefix);
   }
 
   get now(): string {
