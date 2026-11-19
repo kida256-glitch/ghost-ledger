@@ -10,7 +10,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
 
 ## Phase 0: Project setup
 
-- [ ] 1. Scaffold the project so the Definition of Done runs from the first commit
+- [x] 1. Scaffold the project so the Definition of Done runs from the first commit
   - `package.json`: `engines.node: "24.x"`, `"type": "module"`, scripts `typecheck` (`tsc --noEmit`), `lint` (`eslint .`), `test` (`vitest run`), `test:integration` (`vitest run --config vitest.integration.config.ts --passWithNoTests` until task 25 adds tests), `build` (`next build`).
   - Dependencies: `next@15`, `react@19`, `react-dom@19`, `zod`.
   - Dev dependencies: `typescript`, `@types/node`, `@types/react`, `eslint`, `typescript-eslint`, `@next/eslint-plugin-next`, `@vitest/eslint-plugin`, `vitest`, `fast-check`, `tailwindcss`, `@tailwindcss/postcss`.
