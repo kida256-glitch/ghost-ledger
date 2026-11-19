@@ -286,3 +286,22 @@ A task is not complete if any of these fail, or if any test is skipped. Property
 ## Phase 5: Checkpoints (dropped)
 
 R17 was dropped at the task 18 review, together with tasks 27?29. See requirements.md.
+
+## Phase 6: Deployment skeleton
+
+- [ ] 30. Hosted Supabase and Vercel, proven end to end (design §14)
+  - Contents:
+    - `createPool` with verify-full TLS for non-local hosts and `DATABASE_CA_CERT`; every script and the runtime use it;
+    - `readonlyEnv()` also refuses `SUPABASE_SERVICE_ROLE_KEY`;
+    - `GET /api/health` (`src/app/api/health/route.ts`, logic in `src/db/health.ts`);
+    - `vercel.json` with `regions: ["fra1"]`;
+    - `npm run db:deploy` and `npm run hosted:check`;
+    - DEMO.md "Hosted deployment": the click checklist and exact PowerShell commands; `.env.example` and README updated.
+  - Tests:
+    - `createPool` config: local hosts without TLS; remote hosts refuse without a CA and verify with one; `sslmode` and friends are stripped; `max: 1`;
+    - `chainHealth` on PGlite as `ghost_readonly`: verified after the seed, failed with the seq after a tamper, not_seeded on an empty database;
+    - the route maps each case to its HTTP status and never echoes error details;
+    - `deploy-db` env checks (names variables, never values; refuses local hosts);
+    - `hosted-check` logic against PGlite with a fake `fetch`: all PASS on a good setup, FAIL lines for a wrong role, wrong region and a broken matrix.
+  - Status: the agent's part is done and was run against local Supabase (health verified, then failed at seq 11 after `demo:tamper`; `hosted:check` passed the matrix and 10 concurrent appends, and failed only the region and pooler-port checks, as expected locally). Waiting on the user steps.
+  - Done when: the Definition of Done passes and the scripts work locally. **User steps** (the agent can't click through dashboards): follow the DEMO.md checklist, then `npm run hosted:check -- --url <deployment URL>` prints all PASS and `<deployment URL>/api/health` shows `"status":"verified"`.

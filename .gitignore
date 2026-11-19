@@ -4,6 +4,8 @@ node_modules/
 # Environment files: never commit secrets. The template is kept.
 .env*
 !.env.example
+# Downloaded Supabase CA certificate (public, but no need to commit it)
+*.crt
 
 # Build and test output
 .next/

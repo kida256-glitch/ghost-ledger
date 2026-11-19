@@ -5,11 +5,14 @@
 // direct connection, not the pooler). Passwords are never printed or logged.
 import pg from "pg";
 import { z } from "zod";
+import { poolConfig } from "../src/db/db";
 
 const envSchema = z.object({
   ADMIN_DATABASE_URL: z.string().url().refine((u) => /^postgres(ql)?:\/\//.test(u), "must be a postgres:// URL"),
   APP_DB_PASSWORD: z.string().min(16, "must be at least 16 characters"),
   READONLY_DB_PASSWORD: z.string().min(16, "must be at least 16 characters"),
+  /** Required for non-local databases (design §14.2). */
+  DATABASE_CA_CERT: z.string().optional(),
 });
 
 export type RolesLoginEnv = z.infer<typeof envSchema>;
@@ -50,7 +53,7 @@ async function main() {
     console.error(`db:roles-login: invalid environment: ${env.error}`);
     process.exit(1);
   }
-  const client = new pg.Client({ connectionString: env.value.ADMIN_DATABASE_URL });
+  const client = new pg.Client(poolConfig(env.value.ADMIN_DATABASE_URL, { caCert: env.value.DATABASE_CA_CERT }));
   await client.connect();
   try {
     await setRoleLogins(client, env.value, (line) => console.log(line));

@@ -2,7 +2,7 @@
 
 A savings-group (VSLA/SACCO) platform for Uganda that stitches together a USSD feature-phone interface, an append-only hash-chained ledger, and a read-only AI agent connected over MCP. Built for Kiroween 2026 (Frankenstein category).
 
-**Live demo:** _TBD (Vercel URL)_
+**Live demo:** _TBD (Vercel URL)_. Deployment steps and the hosted check are in [DEMO.md](DEMO.md#hosted-deployment-supabase--vercel). `GET /api/health` shows the demo group's chain status.
 
 > Work in progress. Setup, environment variables and test instructions will be added as the specs in `.kiro/specs/` are implemented.
 
@@ -20,7 +20,9 @@ Which connection each part uses:
 | --- | --- | --- |
 | App runtime (Next.js, Vercel) | `DATABASE_URL` | `ghost_app`, transaction pooler |
 | Agent and MCP server | `READONLY_DATABASE_URL` | `ghost_readonly` (SELECT only) |
-| Migrations, `db:roles-login`, `db:seed`, demo scripts | `ADMIN_DATABASE_URL` | table owner, direct connection |
+| Migrations, `db:roles-login`, `db:seed`, `db:deploy`, `hosted:check`, demo scripts | `ADMIN_DATABASE_URL` | table owner, direct connection or session pooler |
+
+Every non-local connection uses TLS that verifies the Supabase CA and hostname, from `DATABASE_CA_CERT`; without it, the connection is refused. Vercel gets only `DATABASE_URL`, `READONLY_DATABASE_URL` and `DATABASE_CA_CERT`.
 
 `npm run db:seed` inserts every group, member and ledger row through `ADMIN_DATABASE_URL`. It also needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, but only to create the two demo leader logins through the Supabase Auth admin API. Nothing else uses that key.
 

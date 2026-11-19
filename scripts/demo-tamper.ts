@@ -1,11 +1,10 @@
 // npm run demo:tamper [-- --seq N] [-- --group CODE]   (needs ALLOW_TAMPER_DEMO=true)
-import pg from "pg";
-import { fromPgPool } from "../src/db/db";
+import { createPool, fromPgPool } from "../src/db/db";
 import { adminEnv } from "../src/lib/env";
 import { parseDemoArgs, tamper } from "./tamper";
 
 const env = adminEnv();
-const pool = new pg.Pool({ connectionString: env.ADMIN_DATABASE_URL, max: 1 });
+const pool = createPool(env.ADMIN_DATABASE_URL, { caCert: env.DATABASE_CA_CERT });
 try {
   const out = await tamper(fromPgPool(pool), process.env, parseDemoArgs(process.argv.slice(2)));
   if (out.ok) console.log(out.message);

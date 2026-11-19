@@ -17,6 +17,8 @@ export const envSchema = z.object({
   READONLY_DATABASE_URL: optionalUrl,
   /** Table owner, direct connection: migrations, seed, db:roles-login, demo scripts. Never the app. */
   ADMIN_DATABASE_URL: optionalUrl,
+  /** PEM text of the Supabase CA; required for any non-local database (design §14.2). Public, not a secret. */
+  DATABASE_CA_CERT: z.string().includes("BEGIN CERTIFICATE", { message: "must be a PEM certificate" }).optional(),
   /** Must never be set where the app runs (README). Read only by the seed script. */
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 });
@@ -48,15 +50,18 @@ export function parseEnv(source: Record<string, string | undefined> = process.en
 export function appEnv(source: Record<string, string | undefined> = process.env): Env & { DATABASE_URL: string } {
   const env = parseEnv(source);
   if (env.SUPABASE_SERVICE_ROLE_KEY !== undefined) {
-    throw new EnvError("SUPABASE_SERVICE_ROLE_KEY must not be set in the app's environment");
+    throw new EnvError(SERVICE_KEY_REFUSAL);
   }
   if (env.DATABASE_URL === undefined) throw new EnvError("DATABASE_URL is required");
   return { ...env, DATABASE_URL: env.DATABASE_URL };
 }
 
-/** The read-only consumers' view (MCP server, agent). */
+const SERVICE_KEY_REFUSAL = "SUPABASE_SERVICE_ROLE_KEY must not be set in the app's environment";
+
+/** The read-only consumers' view (/api/health, MCP server, agent). Also refuses the service-role key. */
 export function readonlyEnv(source: Record<string, string | undefined> = process.env): Env & { READONLY_DATABASE_URL: string } {
   const env = parseEnv(source);
+  if (env.SUPABASE_SERVICE_ROLE_KEY !== undefined) throw new EnvError(SERVICE_KEY_REFUSAL);
   if (env.READONLY_DATABASE_URL === undefined) throw new EnvError("READONLY_DATABASE_URL is required");
   return { ...env, READONLY_DATABASE_URL: env.READONLY_DATABASE_URL };
 }

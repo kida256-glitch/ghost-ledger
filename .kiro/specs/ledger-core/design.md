@@ -213,7 +213,7 @@ On Vercel, the app and the MCP server connect through Supabase's transaction poo
 - **No session settings.** Set the isolation level with `BEGIN ISOLATION LEVEL READ COMMITTED` on every write transaction. Use `SET LOCAL` only inside a transaction, never plain `SET`. No `LISTEN`/`NOTIFY` and no temporary tables.
 - **Prepared statements off.** Transaction-mode poolers don't reliably support named prepared statements. With node-postgres (`pg`), never pass a `name` in a query config. Plain parameterized queries use the unnamed statement and are safe. If the driver ever changes (e.g. to postgres.js), it must be set to `prepare: false`.
 - **Small pools.** Use `max: 1` per serverless instance on Vercel, because the pooler does the pooling.
-- **SSL.** Connections to Supabase require SSL. The exact `pg` SSL settings are confirmed in the deployment task against the live project.
+- **SSL.** Every non-local connection uses TLS with full verification (CA and hostname) against the Supabase CA in `DATABASE_CA_CERT`. See §14.
 - **Admin connections.** Migrations, seed and the demo scripts use the direct (session) connection string, `ADMIN_DATABASE_URL`, not the pooler. `ALTER TABLE` and multi-statement admin work should not go through the transaction pooler.
 
 ## 6. Roles, grants and RLS
@@ -446,6 +446,8 @@ The Auth step sits behind an `AuthAdmin` interface, so tests use a fake.
 | `DEMO_LEADER_PASSWORD` | seed only | password for both demo leaders |
 | `ALLOW_TAMPER_DEMO` | demo scripts | must be `true` |
 | `INTEGRATION_DATABASE_URL` | `test:integration` | defaults to local Supabase; only localhost allowed |
+| `DATABASE_CA_CERT` | every non-local connection (app, scripts) | PEM text of the Supabase CA (`prod-ca-2021.crt`); public, not a secret |
+| `ALLOW_HOSTED_CHECK` | `hosted:check` | must be `true` |
 
 ## 11. Testing
 
@@ -538,3 +540,52 @@ Ledgers are generated as random `Command` sequences run through `executeAll`, ke
 
 1. **Genesis hash.** It stays at 64 zeros (§2.2 explains why that is safe).
 2. **App database role.** `ghost_app` is added (§6). It has `SELECT` and `INSERT` on the ledger table, and column-level `UPDATE` only on the credential columns, which live in their own `member_credentials` table.
+
+## 14. Deployment skeleton (task 30)
+
+Goal: one hosted Supabase project and one Vercel deployment that prove the chain works end to end before any UI exists.
+
+### 14.1 Region
+
+Supabase has no African region. The project uses the specific region **Central EU (Frankfurt), `eu-central-1`**, not the "Europe" general region, because a general region may place the project in London or Zurich and the function region could then not be matched. Vercel functions run in **`fra1`** (Frankfurt), set in `vercel.json`. Each USSD request makes several database round trips, so function-to-database latency matters more than Kampala-to-function latency, and same-city placement keeps it in single-digit milliseconds. London (`eu-west-2` / `lhr1`) is an equally valid pair. We have not measured latency from Kampala to either.
+
+### 14.2 Connections
+
+| Who | Variable | Endpoint | Pool |
+|-----|----------|----------|------|
+| App (Vercel) | `DATABASE_URL` | `ghost_app.<ref>` @ Supavisor transaction mode, port 6543 | `max: 1` |
+| `/api/health`, later MCP and agent | `READONLY_DATABASE_URL` | `ghost_readonly.<ref>` @ port 6543 | `max: 1` |
+| Migrations, `db:roles-login`, seed, `hosted:check` (owner side) | `ADMIN_DATABASE_URL` | `postgres` direct (`db.<ref>.supabase.co:5432`), or Supavisor **session** mode (port 5432) on IPv4-only networks | `max: 1` |
+
+`createPool(url, { caCert })` in `src/db/db.ts` builds every pool:
+
+- Hosts `localhost`, `127.0.0.1` and `::1` connect without TLS (local Supabase).
+- Any other host requires `DATABASE_CA_CERT` and connects with `ssl: { ca, rejectUnauthorized: true }`. Node checks the hostname by default, so this is `verify-full`. Without the CA, it refuses rather than fall back to an unverified connection.
+- `sslmode`, `sslrootcert`, `sslcert`, `sslkey` and `uselibpqcompat` are removed from the URL, because `pg` lets URL parameters override the `ssl` object.
+- No named prepared statements (§5.1, unchanged).
+
+No Supabase key of any kind is set on Vercel. `appEnv()` and `readonlyEnv()` both refuse to start if `SUPABASE_SERVICE_ROLE_KEY` is present.
+
+### 14.3 `GET /api/health`
+
+Connects as `ghost_readonly` through `READONLY_DATABASE_URL`, loads the seeded group (`TUBEERA`) and its entries, and runs `verifyChain`. Response (JSON, `Cache-Control: no-store`):
+
+| Case | HTTP | Body |
+|------|------|------|
+| chain verifies | 200 | `{ status: "verified", group, entries, headSeq, headHash, dbRole, region }` |
+| chain fails | 200 | `{ status: "failed", group, entries, failedAtSeq, reason, dbRole, region }` |
+| group not seeded | 404 | `{ status: "not_seeded", group }` |
+| env or database error | 503 | `{ status: "error" }`, nothing else; the server logs only the error class and code |
+
+`dbRole` is `current_user`, so the URL itself shows which role the deployment uses. `region` is `VERCEL_REGION` (null locally).
+
+### 14.4 Scripts
+
+- `npm run db:deploy` (`scripts/deploy-db.ts`): checks every variable it needs before starting, then runs `supabase db push --db-url $ADMIN_DATABASE_URL`, `db:roles-login` and `db:seed` in order, stopping at the first failure. Refuses local hosts (local uses `supabase db reset`). The service-role key stays in the shell (README).
+- `npm run hosted:check -- --url <deployment URL>` (`scripts/hosted-check.ts`), gated by `ALLOW_HOSTED_CHECK=true`:
+  1. `GET <url>/api/health` returns `verified`, `dbRole` `ghost_readonly` and `region` `fra1`.
+  2. The privilege matrix (`checkPrivileges`, §6.4) has no mismatches on the hosted database.
+  3. `DATABASE_URL` is the transaction pooler (port 6543) and `current_user` there is `ghost_app`.
+  4. Concurrent appends through the pooler: the owner creates a separate check group (code `CHK` + 5 random characters, never `TUBEERA`) with 10 members; 10 independent `max: 1` pools, as 10 serverless instances would have, each append one deposit request at the same time. Seq is contiguous 1..10 and `verifyChain` passes. These rows are permanent (append-only), so they live in their own group.
+  5. `GET /api/health` still returns `verified`.
+  It prints one PASS or FAIL line per check and exits non-zero on any FAIL.

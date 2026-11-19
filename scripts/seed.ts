@@ -14,10 +14,9 @@
 // start when the key is present, and that check is for the app, not for us.
 import { readdirSync, readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import pg from "pg";
 import { z } from "zod";
 import { kampalaDate } from "../src/domain";
-import { fromPgPool, type Db } from "../src/db/db";
+import { createPool, fromPgPool, type Db } from "../src/db/db";
 import { INSERT_ENTRY_SQL, INSERT_GROUP_SQL, INSERT_MEMBER_SQL, entryParams, groupParams, memberParams } from "../src/db/rows";
 import { SEED_GROUP_CODE, buildSeed } from "../src/seed/build-seed";
 
@@ -39,6 +38,8 @@ const envSchema = z.object({
   DEMO_LEADER_PASSWORD: z.string().min(12, "must be at least 12 characters"),
   SUPABASE_URL: z.string().url().refine((u) => /^https?:\/\//.test(u), "must be an http(s) URL"),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20, "must be the project's service-role (secret) key"),
+  /** Required for non-local databases (design §14.2). */
+  DATABASE_CA_CERT: z.string().optional(),
 });
 
 export type SeedEnv = z.infer<typeof envSchema>;
@@ -133,7 +134,7 @@ async function main() {
   }
   const i = process.argv.indexOf("--anchor");
   const anchor = i === -1 ? kampalaDate(new Date().toISOString()) : (process.argv[i + 1] ?? "");
-  const pool = new pg.Pool({ connectionString: env.value.ADMIN_DATABASE_URL, max: 1 });
+  const pool = createPool(env.value.ADMIN_DATABASE_URL, { caCert: env.value.DATABASE_CA_CERT });
   try {
     const outcome = await runSeed({ db: fromPgPool(pool), auth: supabaseAuthAdmin(env.value.SUPABASE_URL, env.value.SUPABASE_SERVICE_ROLE_KEY), anchor, password: env.value.DEMO_LEADER_PASSWORD, log: console.log });
     if (!outcome.ok) {
