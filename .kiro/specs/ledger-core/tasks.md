@@ -220,7 +220,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Covers: interface for 7.x, 11.6 and 12.x consumers, with 3.1 lookups by phone and by auth user.
   - Tests (PGlite as `ghost_readonly`): every method returns correctly mapped data; the reader exposes no write method (a type-level test).
 
-- [ ] 21. `LedgerWriter`
+- [x] 21. `LedgerWriter`
   - Contents: `execute` (READ COMMITTED, advisory lock, then the clock read and clamped to the head's occurredAt, idempotency keys `<key>:<i>`, replay, one INSERT per entry, retry `GL001`/`GL002`/`23505` up to 3 times, then `CHAIN_CONFLICT`) and `registerMember` (member plus credentials row).
   - Covers: 3.7, 3.8, 10.17, 13.5 (logic), 13.6, 13.7.
   - Tests:

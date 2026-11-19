@@ -43,7 +43,7 @@ describe("task 19: entries round-trip exactly as hashed (design §2.3)", () => {
       fc.constantFrom(Date.UTC(1970, 0, 1), Date.UTC(9998, 11, 31, 23, 59, 59, 999), Date.UTC(2026, 11, 31, 23, 59, 59, 999), Date.UTC(2027, 0, 1), Date.UTC(2024, 1, 29, 12, 0, 0, 1)),
     );
     await fc.assert(
-      fc.asyncProperty(fc.array(ms, { minLength: 1, maxLength: 5 }), async (times) => {
+      fc.asyncProperty(fc.array(ms, { minLength: 1, maxLength: 14 }), async (times) => {
         // A fresh group per run, so a failing run can't leave the next one a broken chain.
         const { group, members } = await freshGroup();
         const [chair, , alice] = members as [(typeof members)[number], (typeof members)[number], (typeof members)[number]];
@@ -76,10 +76,21 @@ describe("task 19: entries round-trip exactly as hashed (design §2.3)", () => {
         expect(back).toEqual(entries);
         expect(verifyChain(back)).toMatchObject({ ok: true, count: entries.length });
       }),
-      // Each run creates a group, 3 members and up to 5 entries in PGlite, then reads them back.
+      // Each run creates a group, 3 members and up to 14 entries in PGlite (past seq 9, see the regression test), then reads them back.
       { numRuns: 30 },
     );
   }, 120_000);
+
+  it("regression: entries come back in numeric seq order past seq 9 (ORDER BY must not use the ::text alias)", async () => {
+    const { group, members } = await freshGroup();
+    const l = new Ledger(group, members, "e3000003");
+    const [chair, , alice] = members as [(typeof members)[number], (typeof members)[number], (typeof members)[number]];
+    for (let i = 0; i < 6; i++) l.deposit(alice, 2_000 + i, chair); // 12 entries
+    for (const e of l.entries) await insertEntry(pg, e);
+    const back = await listEntries(db, group.id);
+    expect(back.map((e) => e.seq)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
+    expect(verifyChain(back)).toMatchObject({ ok: true, count: 12 });
+  });
 
   it("a reason with double quotes, an em dash, é and an emoji keeps an identical hash after write and read", async () => {
     const { group, members } = await freshGroup();

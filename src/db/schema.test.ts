@@ -4,7 +4,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GSM7_BASIC, seal, verifyChain, type EntryDraft, type LedgerEntry, type Member } from "../domain";
-import { entryDraftArb, uuidArb } from "../domain/testing/arbitraries";
+import { entryDraftArb } from "../domain/testing/arbitraries";
 import { ALICE, BOB, CHAIR, GROUP, Ledger, TREASURER } from "../domain/testing/fixtures";
 import { createTestDb, sqlError } from "./testing/pglite";
 import { insertEntry, insertGroup, insertMember, readEntries } from "./testing/rows";
@@ -193,11 +193,26 @@ describe("task 16: CHECK constraints mirror the TS entry schema", () => {
 
   it("R4.3 R4.4 R4.10 every TS-valid entry is accepted by the database and reads back identical (fast-check)", async () => {
     // Each run: a fresh group and members for every subject and actor; reference
-    // ids point at the run's first entry so foreign keys hold.
+    // ids point at the run's first entry so foreign keys hold. Generated uuids
+    // can repeat across runs (fast-check likes 00000000-…), so every id is
+    // renamed to one unique to the run; the TS-valid shape is unchanged.
     let run = 0;
     await fc.assert(
-      fc.asyncProperty(uuidArb, fc.array(entryDraftArb(), { minLength: 1, maxLength: 6 }), async (groupId, raw) => {
+      fc.asyncProperty(fc.array(entryDraftArb(), { minLength: 1, maxLength: 6 }), async (generated) => {
         run++;
+        const groupId = `0b6e4d2c-1a3f-4e5d-8c7b-${(0xa00000 + run).toString(16).padStart(12, "0")}`;
+        const rename = new Map<string, string>();
+        const fresh = (id: string) => {
+          if (!rename.has(id)) rename.set(id, `${(0xd0000000 + run).toString(16)}-0000-4000-8000-${String(rename.size + 1).padStart(12, "0")}`);
+          return rename.get(id) as string;
+        };
+        const raw = generated.map((d) => ({
+          ...d,
+          id: fresh(d.id),
+          subjectMemberId: fresh(d.subjectMemberId),
+          actorMemberId: d.actorMemberId === null ? null : fresh(d.actorMemberId),
+          ...(d.loanId === null ? {} : { loanId: fresh(d.loanId) }),
+        })) as EntryDraft[];
         await insertGroup(db, { ...GROUP, id: groupId, code: `P${String(run).padStart(7, "0")}` });
         const people = new Set(raw.flatMap((d) => [d.subjectMemberId, d.actorMemberId].filter((x): x is string => x !== null)));
         for (const id of people) {

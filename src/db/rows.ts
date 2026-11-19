@@ -185,6 +185,6 @@ export function groupParams(g: Group): unknown[] {
 }
 
 export async function listEntries(db: Db, groupId: string): Promise<LedgerEntry[]> {
-  const r = await db.query<Row>(`${ENTRY_SELECT} where group_id = $1 order by seq`, [groupId]);
+  const r = await db.query<Row>(`${ENTRY_SELECT} where group_id = $1 order by ledger_entries.seq`, [groupId]);
   return r.rows.map(entryFromRow);
 }
