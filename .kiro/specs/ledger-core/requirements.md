@@ -7,8 +7,9 @@ ledger-core is the foundation of Ghost Ledger. It covers:
 - the pure domain package (`src/domain`): money, groups, member registration, ledger entries, the hash chain, chain verification, balance derivation, the loan approval workflow, repayments and anomaly detection;
 - the Postgres schema and migrations (`supabase/migrations`), including the append-only trigger and a read-only role;
 - the repository that appends and reads entries (`src/db`);
-- seed data for the demo group and a tamper-demo script;
-- an optional checkpoint feature (Requirement 17, low priority).
+- seed data for the demo group and a tamper-demo script.
+
+Requirement 17 (checkpoints) was dropped at the task 18 review; see "Out of scope".
 
 USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs. They consume what this spec provides. Items this spec hands to them are listed at the end.
 
@@ -154,12 +155,13 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 
 1. WHEN a member (over USSD, for themselves) or a leader (on the dashboard) records a savings deposit request of a valid amount, at least the group's minimum deposit, the domain SHALL append a `DEPOSIT_REQUEST` entry with status `pending`. A deposit request SHALL NOT change any balance or group cash.
 2. IF a savings deposit request is below the group's minimum deposit, THEN the domain SHALL reject it with error `BELOW_MIN_DEPOSIT`.
-3. WHEN a member records a social fund contribution of a valid amount, the domain SHALL append a `SOCIAL_FUND_CONTRIBUTION` entry and the member's social fund balance SHALL increase by exactly that amount.
+3. WHEN a leader records a member's social fund contribution of a valid amount, the domain SHALL append a `SOCIAL_FUND_CONTRIBUTION` entry and the member's social fund balance SHALL increase by exactly that amount.
 4. IF a deposit request is recorded on the dashboard by an actor who is not a leader of the group, THEN the domain SHALL reject it with error `NOT_A_LEADER`.
 5. WHEN a leader confirms a `pending` deposit request, the domain SHALL append a `DEPOSIT_CONFIRMATION` entry with the request's member and amount, the member's savings balance and group cash SHALL increase by exactly that amount, and the request's status SHALL be `confirmed`.
 6. IF the actor confirming a deposit is not a leader of the group, THEN the domain SHALL reject it with error `NOT_A_LEADER`. IF the actor is the depositing member, THEN the domain SHALL reject it with error `SELF_APPROVAL`.
 7. IF a confirmation targets a deposit request that does not exist or is not `pending`, THEN the domain SHALL reject it with error `INVALID_DEPOSIT_STATE`.
 8. Loan limits (R10.1) and all savings totals SHALL count confirmed deposits only.
+9. Money-in rule: every entry that brings cash in (`DEPOSIT_CONFIRMATION`, `LOAN_REPAYMENT`, `SOCIAL_FUND_CONTRIBUTION`) SHALL be recorded by a leader of the group who is not the member it credits. IF the actor is not a leader, THEN the domain SHALL reject the command with error `NOT_A_LEADER`; IF the actor is that member, THEN with error `SELF_APPROVAL`. Members can't self-record cash in over any channel.
 
 ### Requirement 10: Loan requests, approval and disbursement
 
@@ -191,7 +193,7 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 
 #### Acceptance Criteria
 
-1. WHEN a member repays an amount no greater than their active loan's outstanding, the domain SHALL append a `LOAN_REPAYMENT` entry and the outstanding SHALL decrease by exactly that amount.
+1. WHEN a leader records a member's repayment of an amount no greater than their active loan's outstanding, the domain SHALL append a `LOAN_REPAYMENT` entry and the outstanding SHALL decrease by exactly that amount. Repayments follow the money-in rule (R9.9).
 2. IF a repayment exceeds the outstanding, THEN the domain SHALL reject it with error `EXCEEDS_OUTSTANDING`, include the outstanding in the error, and append nothing.
 3. IF the member has no active loan, THEN the domain SHALL reject the repayment with error `NO_ACTIVE_LOAN`.
 4. WHEN a loan's outstanding reaches 0, the domain SHALL report the loan's status as `repaid`.
@@ -225,14 +227,14 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 2. IF any `UPDATE`, `DELETE` or `TRUNCATE` is attempted on ledger entries, THEN a database trigger SHALL reject it with an error.
 3. IF an inserted entry's `seq` is not one greater than the group's last `seq`, or its `prev_hash` does not equal the last entry's `hash` (or the genesis hash for `seq` 1), THEN a database trigger SHALL reject the insert.
 4. The database SHALL enforce uniqueness of (group id, seq), of (group id, idempotency key) where the key is present, and of member phone number.
-5. WHEN two appends to the same group run at the same time, both SHALL either succeed with contiguous `seq` values and a valid chain, or one SHALL fail with a retryable error. The chain SHALL never fork.
+5. WHEN two appends to the same group run at the same time, both SHALL either succeed with contiguous `seq` values and a valid chain, or one SHALL fail with a retryable error. The chain SHALL never fork. The repository SHALL read the clock only after taking the group lock and SHALL use the later of the clock and the head's occurred-at time, so a clock that is behind the head never causes `OUT_OF_ORDER`; chain-link (`GL001`), time-order (`GL002`) and unique-key conflicts SHALL be retried and finally reported as `CHAIN_CONFLICT` (retryable).
 6. WHEN an append uses an idempotency key already used in that group, the repository SHALL return the existing entry and SHALL NOT append a new one.
 7. The repository SHALL run domain validation and compute the hash with the domain functions before inserting. It SHALL NOT duplicate domain rules.
 8. The migrations SHALL create a read-only database role with `SELECT` only on these tables, for use by the MCP server and agent.
-9. The migrations SHALL enable Row Level Security on every table with no policies for the `anon` or `authenticated` roles.
+9. The migrations SHALL enable Row Level Security on every table with no policies for the `anon` or `authenticated` roles, and SHALL revoke all privileges on every table from `anon`, `authenticated` and `service_role`, including on future tables through default privileges. The `service_role` key SHALL never be in the app's environment.
 10. `npm test` SHALL run the migrations against PGlite (a devDependency, never a runtime dependency) and test 13.2, 13.3, 13.4, 13.6, 13.8, 13.9 and 13.12, with no external database or network required.
 11. WHERE a test needs more than one database connection (13.5), it SHALL run in `npm run test:integration` against a local Supabase database instead, and SHALL NOT be part of `npm test`. The README SHALL document the exact commands to run it.
-12. The migrations SHALL create an application role (`ghost_app`) that owns no tables and has only: `SELECT` and `INSERT` on ledger entries and checkpoints; `SELECT` on groups; `SELECT` and `INSERT` on members; and, on a separate member credentials table, `SELECT`, `INSERT` of the member id, and `UPDATE` of only the PIN hash, failed-attempt counter and locked-until columns. The app SHALL connect at runtime only as this role. The insert policy for `ghost_app` on ledger entries SHALL reject `seed`-channel rows (R4.13).
+12. The migrations SHALL create an application role (`ghost_app`) that owns no tables and has only: `SELECT` and `INSERT` on ledger entries; `SELECT` on groups; `SELECT` and `INSERT` on members; and, on a separate member credentials table, `SELECT`, `INSERT` of the member id, and `UPDATE` of only the PIN hash, failed-attempt counter and locked-until columns. The app SHALL connect at runtime only as this role. The insert policy for `ghost_app` on ledger entries SHALL reject `seed`-channel rows (R4.13).
 
 ### Requirement 14: Seed data
 
@@ -275,28 +277,17 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 2. The test suite SHALL include at least one fast-check property for every other acceptance criterion in Requirements 1, 3, 4, 5, 6, 9, 10, 11 and 12.
 3. Generated ledgers SHALL be built by running random command sequences through the real domain commands.
 
-### Requirement 17: Checkpoints (optional, low priority)
+### Requirement 17: Checkpoints (dropped)
 
-**User Story:** As a group leader, I want to save the ledger's current head as a checkpoint, so that deleting the newest entries is detected later.
+Dropped at the task 18 review. Saving the chain head as a checkpoint (head `seq` and hash, recorded by a leader, checked by `verifyChain` as `TRUNCATED` / `CHECKPOINT_MISMATCH`) is out of scope for this spec and listed as roadmap in the README.
 
-Priority: optional. Build after all other ledger-core tasks. Dropping it SHALL NOT affect any other requirement.
-
-#### Acceptance Criteria
-
-1. The domain SHALL provide the head `seq` and head hash of a group's chain, for display on the dashboard.
-2. WHEN a leader saves a checkpoint, the system SHALL store the group id, head `seq`, head hash, the leader's member id and the time, in a checkpoints table protected by the same append-only trigger as ledger entries.
-3. IF the person saving a checkpoint is not a leader of that group, THEN the domain SHALL reject it with error `NOT_A_LEADER`.
-4. WHEN `verifyChain` is given checkpoints and the chain has fewer entries than a checkpoint's `seq`, it SHALL fail with reason `TRUNCATED`.
-5. WHEN `verifyChain` is given checkpoints and the entry at a checkpoint's `seq` has a different hash, it SHALL fail with reason `CHECKPOINT_MISMATCH`.
-6. The system SHALL show each checkpoint's hash so leaders can copy it into the group's paper record book.
-
-Known gap that remains: checkpoints cannot detect deletion of entries added after the latest checkpoint. They also cannot detect an attacker with database-owner rights who deletes both entries and checkpoint rows, unless the leaders kept the hash outside the system.
+Known gap that remains: a hash chain alone cannot detect deletion of its newest entries (truncation of the tail). Even with checkpoints, deletions after the latest checkpoint, or by an attacker with database-owner rights who deletes both entries and checkpoint rows, would go unseen unless the leaders kept the hash outside the system.
 
 ## Handed to later specs
 
 - **Decided (task 15 review): deposits are request-and-confirm (R9).** A member can no longer raise their own savings or loan limit alone.
-- **ussd-engine:** a registered member's first dial sets their PIN. An unknown phone number gets an `END` screen saying they are not registered and should ask their group leader. The **Save** flow creates a `DEPOSIT_REQUEST` (not a credited deposit) and tells the member a leader will confirm it; the member can see pending and confirmed deposits. Loan requests from USSD create `LOAN_REQUEST` entries, and the member can see the request's status. USSD offers no reversals (R4.12).
-- **dashboard-simulator:** leader actions to register a member, **confirm deposits** (a list of pending deposit requests; a leader cannot confirm their own), reject a loan request, approve a loan request, reverse an entry (leaders only), and (optional, Requirement 17) save a checkpoint. "Approve" is one button that records the approval and the disbursement together (Requirement 10.17); the domain keeps them as separate steps. Leader sign-in uses Supabase Auth with email and password, no custom auth.
+- **ussd-engine:** a registered member's first dial sets their PIN. An unknown phone number gets an `END` screen saying they are not registered and should ask their group leader. The **Save** flow creates a `DEPOSIT_REQUEST` (not a credited deposit) and tells the member a leader will confirm it; the member can see pending and confirmed deposits. Loan requests from USSD create `LOAN_REQUEST` entries, and the member can see the request's status. **Repay** only shows the amount owed and the due date (and how to pay a leader); it records nothing, because members can't self-record cash in (R9.9). The same goes for social fund contributions. USSD offers no reversals (R4.12).
+- **dashboard-simulator:** leader actions to register a member, **confirm deposits** (a list of pending deposit requests; a leader cannot confirm their own), **record repayments and social fund contributions** (for other members only), reject a loan request, approve a loan request, and reverse an entry (leaders only). "Approve" is one button that records the approval and the disbursement together (Requirement 10.17); the domain keeps them as separate steps. Leader sign-in uses Supabase Auth with email and password, no custom auth.
 
 ## Out of scope for this spec
 
@@ -309,5 +300,5 @@ Known gap that remains: checkpoints cannot detect deletion of entries added afte
 - Changing group rules after creation.
 - Editing, suspending or removing members through any user interface.
 - Members belonging to more than one group.
-- Detecting deletion of the most recent entries, except as far as Requirement 17 covers it. A hash chain alone cannot detect truncation of its tail.
+- Checkpoints (Requirement 17, dropped) and detecting deletion of the most recent entries. A hash chain alone cannot detect truncation of its tail.
 - PINs, USSD, MCP, agent and dashboard (other specs).

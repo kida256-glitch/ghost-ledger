@@ -194,6 +194,14 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Covers (added): 4.13.
   - Unit test: the roles-login statement escapes the password and never logs it.
 
+- [ ] 18a. Money-in rule and Supabase role revokes (task 18 review)
+  - Contents:
+    - domain: `repayLoan` and `contributeSocialFund` require an active leader who isn't the member (R9.9), like `confirmDeposit`; tests, arbitraries and fixtures moved to leader-recorded cash in;
+    - security migration: revoke all from `anon`, `authenticated` and `service_role` on every table, and in default privileges for future tables (R13.9); the matrix covers `service_role`;
+    - design and README note: the service_role key never goes in the app's environment.
+  - Covers: 9.3, 9.9, 11.1, 13.9.
+  - Tests: P31 (money-in rule property); examples for each error; matrix rows for `service_role`; new mutants for the rule, `docs/MUTATION-CHECK.md` updated.
+
 - [ ] 19. `Db` adapters, env parsing and entry reads
   - Contents:
     - `fromPgPool` (pooler-safe: no named statements, `max: 1`) and `fromPglite`;
@@ -202,6 +210,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Covers: §2.3 (timestamps stored exactly as hashed), §5.1.
   - Tests:
     - P26 (PGlite timestamp round-trip, with `verifyChain` passing on read-back);
+    - database-backed property tests cap `numRuns` (with a comment);
     - a round-trip example with a reason containing double quotes, an em dash, `é` and an emoji: the hash after write and read is identical;
     - env parsing rejects bad URLs;
     - a source-grep test finds no `pg_advisory_lock(` and no `name:` in query configs.
@@ -212,7 +221,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Tests (PGlite as `ghost_readonly`): every method returns correctly mapped data; the reader exposes no write method (a type-level test).
 
 - [ ] 21. `LedgerWriter`
-  - Contents: `execute` (READ COMMITTED, advisory lock, idempotency keys `<key>:<i>`, replay, one INSERT per entry, retry up to 3 times, then `CHAIN_CONFLICT`) and `registerMember` (member plus credentials row).
+  - Contents: `execute` (READ COMMITTED, advisory lock, then the clock read and clamped to the head's occurredAt, idempotency keys `<key>:<i>`, replay, one INSERT per entry, retry `GL001`/`GL002`/`23505` up to 3 times, then `CHAIN_CONFLICT`) and `registerMember` (member plus credentials row).
   - Covers: 3.7, 3.8, 10.17, 13.5 (logic), 13.6, 13.7.
   - Tests:
     - PGlite as `ghost_app`:
@@ -223,7 +232,9 @@ A task is not complete if any of these fail, or if any test is skipped. Property
       - a duplicate phone gives `PHONE_ALREADY_REGISTERED`;
       - `verifyChain` passes after each write.
     - Fake `Db`:
-      - `GL001`/`23505` retry, then `CHAIN_CONFLICT`;
+      - `GL001`/`GL002`/`23505` retry, then `CHAIN_CONFLICT`;
+      - a clock behind the head: entries get the head's occurredAt, no `OUT_OF_ORDER`;
+      - the clock is read only after the lock statement;
       - the isolation level is set on every transaction.
 
 ## Phase 3: Seed and demo
@@ -262,7 +273,9 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - drop `--passWithNoTests` from `test:integration`;
     - check that the README commands match.
   - Covers: 13.5, 13.11.
-  - Tests: 20 parallel appends over 10 `ghost_app` connections give contiguous seq values and a verified chain, with no `CHAIN_CONFLICT` left after retries.
+  - Tests:
+    - 20 parallel appends over 10 `ghost_app` connections give contiguous seq values and a verified chain, with no `CHAIN_CONFLICT` left after retries; some writers use a clock behind the head;
+    - the privilege matrix from task 18, run against local Supabase, including `anon`, `authenticated` and `service_role`.
   - Done when: the Definition of Done passes, and `npx supabase start && npx supabase db reset && npm run test:integration` passes. This needs Docker. If Docker isn't available on this machine, I'll say so and hand the command to you rather than mark the task done.
 
 - [ ] 26. Requirement traceability check
@@ -270,24 +283,6 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Covers: 16.1–16.3.
   - Tests: the test itself. It must fail when a criterion id is removed from a test title, which is checked once by hand and recorded in `KIRO_USAGE.md`.
 
-## Phase 5: Checkpoints (R17, optional, last)
+## Phase 5: Checkpoints (dropped)
 
-These tasks can be dropped without affecting any task above.
-
-- [ ] 27. Checkpoints migration
-  - Contents: the `checkpoints` table, append-only triggers, and grants (SELECT and INSERT for `ghost_app`, SELECT for `ghost_readonly`), added to the privilege matrix.
-  - Covers: 17.2 (storage).
-  - Tests (PGlite): UPDATE, DELETE and TRUNCATE are rejected; the matrix test passes with the new table.
-
-- [ ] 28. Checkpoints in the domain
-  - Contents: `chainHead`, plus the `TRUNCATED` and `CHECKPOINT_MISMATCH` checks in `verifyChain`.
-  - Covers: 17.1, 17.4, 17.5.
-  - Tests: P27; examples for each reason; with no checkpoints, results are unchanged from task 7.
-
-- [ ] 29. `saveCheckpoint` and `listCheckpoints`
-  - Contents: the writer and reader methods.
-  - Covers: 17.2, 17.3, 17.6 (data side; the display belongs to dashboard-simulator).
-  - Tests (PGlite as `ghost_app`):
-    - a leader saves a checkpoint;
-    - a non-leader gets `NOT_A_LEADER`;
-    - truncating after a checkpoint (as the owner, with the trigger disabled) makes `verifyChain` give `TRUNCATED`.
+R17 was dropped at the task 18 review, together with tasks 27?29. See requirements.md.

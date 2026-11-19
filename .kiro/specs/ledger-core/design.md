@@ -62,7 +62,7 @@ The representation rules make every hash input deterministic:
 
 ### 2.3 Timestamps
 
-- `LedgerWriter` reads the clock once per append: `occurredAt = max(clock().toISOString(), head.occurredAt)`. Clamping to the head time stops small clock skew between server instances from causing `OUT_OF_ORDER` errors.
+- `LedgerWriter` reads the clock once per append, **after** taking the group lock (so the head it compares with is final): `occurredAt = max(clock().toISOString(), head.occurredAt)`. Clamping to the head time stops small clock skew between server instances from causing `OUT_OF_ORDER` errors.
 - That exact string goes into the entry, the hash and the `INSERT` (as a text parameter cast to `timestamptz`).
 - `ledger_entries.occurred_at` has **no default**. A `CHECK (occurred_at = date_trunc('milliseconds', occurred_at))` rejects any value with sub-millisecond precision rather than rounding it silently. No trigger modifies it.
 - Reads never use driver date parsing:
@@ -74,7 +74,7 @@ The representation rules make every hash input deterministic:
 
 ## 3. Database schema
 
-One migration per concern: `<ts>_ledger_core_schema.sql`, `<ts>_ledger_core_security.sql`, and finally `<ts>_checkpoints.sql` (R17).
+One migration per concern: `<ts>_ledger_core_schema.sql`, `<ts>_ledger_core_triggers.sql` and `<ts>_ledger_core_security.sql` (R17 checkpoints were dropped; no checkpoints migration).
 
 ```sql
 create table groups (
@@ -200,7 +200,7 @@ How this keeps the chain from forking:
 
 - **Normal path.** Two writers for the same group queue on the lock in step 2. The second one replays after the first has committed, so its `seq` and `prev_hash` are correct.
 - **Clients that skip the lock**, such as `psql` or an insider: the trigger takes the same lock before reading the head, and rejects a stale `seq` or `prev_hash` with `GL001`. `unique (group_id, seq)` is the last backstop (`23505`).
-- **Retry.** `GL001`, `GL002` and `23505` on `(group_id, seq)` count as conflicts. The writer retries the whole transaction up to 3 times. After that it returns `{ code: 'CHAIN_CONFLICT', retryable: true }` (R13.5).
+- **Retry.** `GL001`, `GL002` and `23505` (on `(group_id, seq)` or the idempotency key) count as conflicts. `GL002` can only happen when a client skipped the lock, because the writer clamps to the head time after locking. The writer retries the whole transaction up to 3 times. After that it returns `{ code: 'CHAIN_CONFLICT', retryable: true }` (R13.5).
 - **Why READ COMMITTED matters.** At this level each statement takes a fresh snapshot, so reads issued after the lock is granted see the other writer's commit. Under REPEATABLE READ the snapshot would be taken by the lock statement itself, *before* the wait, and the replay would be stale. The writer sets the isolation level explicitly.
 
 Lock keys come from `hashtext(uuid)`, so two groups can collide. A collision only makes those two groups wait for each other; it never breaks correctness.
@@ -236,9 +236,8 @@ Neither runtime role owns any table. Only the owner can run `ALTER TABLE … DIS
 | `members` | SELECT, INSERT | SELECT | none |
 | `member_credentials` | SELECT, INSERT (`member_id`), UPDATE (`pin_hash`, `failed_attempts`, `locked_until`) | none | none |
 | `ledger_entries` | SELECT, INSERT | SELECT | none |
-| `checkpoints` (R17) | SELECT, INSERT | SELECT | none |
 
-No role except the owner gets `UPDATE` on `ledger_entries` or `checkpoints`, or `DELETE`, `TRUNCATE`, `REFERENCES` or `TRIGGER` on anything. A blocked update fails twice over: first the missing privilege, then the trigger for the owner. `ghost_app` can't touch `member_credentials.member_id` after insert, so a PIN can't be moved to another member.
+No role except the owner gets `UPDATE` on `ledger_entries`, or `DELETE`, `TRUNCATE`, `REFERENCES` or `TRIGGER` on anything. A blocked update fails twice over: first the missing privilege, then the trigger for the owner. `ghost_app` can't touch `member_credentials.member_id` after insert, so a PIN can't be moved to another member.
 
 ### 6.3 Migration `<ts>_ledger_core_security.sql`
 
@@ -257,7 +256,8 @@ grant select on groups, members, ledger_entries to ghost_readonly;   -- explicit
 
 -- every table:
 alter table <t> enable row level security;
-revoke all on <t> from anon, authenticated;
+revoke all on <t> from anon, authenticated, service_role;
+alter default privileges in schema public revoke all on tables from anon, authenticated, service_role;   -- future tables too
 create policy app_select on <t> for select to ghost_app using (true);          -- tables ghost_app may read
 create policy app_insert on <t> for insert to ghost_app with check (true);     -- members, member_credentials
 create policy app_insert on ledger_entries for insert to ghost_app
@@ -267,7 +267,7 @@ create policy readonly_select on <t> for select to ghost_readonly using (true); 
 ```
 
 - **RLS applies to both runtime roles**, because they are not owners. They need the `using (true)` policies above, or they see zero rows and every insert fails. Real protection comes from the grants. RLS is there so that the Supabase API roles (`anon`, `authenticated`) get nothing.
-- **`revoke all` from `anon` and `authenticated`** is belt and braces. Supabase grants broad privileges to those roles by default, and `TRUNCATE` is not subject to RLS.
+- **`revoke all` from `anon`, `authenticated` and `service_role`**, plus the same revoke in default privileges for future tables, is belt and braces. `service_role` bypasses RLS, so only the missing grants keep it out. Supabase grants broad privileges to those roles by default, and `TRUNCATE` is not subject to RLS.
 - **Logins.** Migrations must not contain passwords. `npm run db:roles-login` runs as the owner and sets `LOGIN PASSWORD` on `ghost_app` and `ghost_readonly` from `APP_DB_PASSWORD` and `READONLY_DB_PASSWORD`, using `pg`'s `escapeLiteral`. Through Supavisor, the username takes the form `ghost_app.<project-ref>`.
 - **Functions.** The chain-link trigger runs with the inserting role's privileges. `ghost_app` has `SELECT` on `ledger_entries`, and `pg_advisory_xact_lock` and `hashtext` are executable by `PUBLIC`, so no `SECURITY DEFINER` is needed.
 
@@ -308,7 +308,6 @@ These PGlite tests run in `npm test`. The probe already confirmed that `SET ROLE
 | `commands.ts` | `Command` union, `execute`, `executeAll`; invariant check (R8) |
 | `loans.ts` | `loanLimit`, loan views, `listOverdueLoans` |
 | `anomalies.ts` | `detectAnomalies`, rules, `DEFAULT_THRESHOLDS` |
-| `checkpoint.ts` | R17: `chainHead`, checkpoint checks used by `verifyChain` |
 | `index.ts` | public API (everything below). Other layers import only from here. |
 | `testing/arbitraries.ts` | fast-check generators (test-only) |
 
@@ -342,10 +341,10 @@ memberSummary(state, memberId): MemberSummary | null;  // savings, socialFund, l
 groupSummary(state): GroupSummary;                      // totals, cash, pending loans
 listOverdueLoans(state, asOf: IsoTimestamp): OverdueLoan[];
 
-verifyChain(entries: unknown[], opts?: { checkpoints?: Checkpoint[] }): VerifyResult;
+verifyChain(entries: unknown[]): VerifyResult;
 // VerifyResult = { ok: true; count; headSeq; headHash }
 //              | { ok: false; seq: number | null; reason: 'HASH_MISMATCH' | 'PREV_HASH_MISMATCH'
-//                  | 'SEQUENCE_GAP' | 'MALFORMED_ENTRY' | 'TRUNCATED' | 'CHECKPOINT_MISMATCH' }
+//                  | 'SEQUENCE_GAP' | 'MALFORMED_ENTRY' }
 
 detectAnomalies(input: { group; members; entries; asOf; thresholds?: Partial<Thresholds> }): Anomaly[];
 // Anomaly = { id: `${rule}:${firstEntryId}`, rule, severity, memberId, entryIds, explanation }
@@ -361,6 +360,7 @@ Key behaviours:
 - **`execute`.** It validates the command against `state`, builds a draft, seals it (`seq = head + 1`, `prevHash = head.hash` or genesis, `hash`), then applies it. It returns an error if any balance in R8.1 would go negative. On error the input state is returned untouched.
 - **`replay` / `applyEntry` are total.** They never throw, even on forged entries (for example a disbursement with no approval). Invariants hold for every ledger produced by commands. Forged ledgers are reported, not "fixed".
 - **Reversals.** Leaders only (R4.12). A reversal undoes its target using the target's amount. Reversing a disbursement returns the loan to `approved`. Reversing a repayment returns the loan to `disbursed` if it had reached `repaid`. Reversing a deposit confirmation removes the savings; the request stays `confirmed` (consumed), so a correction is a new request.
+- **Money-in rule (R9.9).** `confirmDeposit`, `repayLoan` and `contributeSocialFund` require an active leader of the group who is not the credited member (`NOT_A_LEADER`, then `SELF_APPROVAL`), checked right after the member lookup. Deposit and loan *requests* stay member actions.
 - **Deposits (R9).** `requestDeposit` checks the member, amount and minimum; on the dashboard the actor must be a leader. It records a `DEPOSIT_REQUEST` with status `pending` and changes no balance. `confirmDeposit` checks, in order: the request exists and is `pending` (`INVALID_DEPOSIT_STATE`), the actor is a leader (`NOT_A_LEADER`), the actor isn't the depositor (`SELF_APPROVAL`). It then records a `DEPOSIT_CONFIRMATION` with the request's member and amount and `confirmsEntryId` = the request id. Savings, and so loan limits, come from confirmations only.
 - **Seed channel.** The domain accepts `channel: 'seed'` (the seed builder uses the real commands). Runtime can't use it: `LedgerWriter.execute` types its channel as `'ussd' | 'dashboard'`, and the `ghost_app` insert policy rejects `seed` rows (§6.3).
 - **Interest.** `computeInterest = ceil(p × bps × m / 10000)`, computed as `Math.floor((p*bps*m + 9999) / 10000)`. The product is at most 5e7 × 3000 × 12 = 1.8e12, well under 2^53. A property test compares it with a BigInt version (R1.4).
@@ -383,13 +383,11 @@ interface LedgerReader {
   getMemberByAuthUserId(authUserId): Promise<Member | null>; // dashboard sign-in
   listEntries(groupId): Promise<LedgerEntry[]>;
   loadState(groupId): Promise<LedgerState | null>;
-  listCheckpoints(groupId): Promise<Checkpoint[]>;           // R17
 }
 interface LedgerWriter extends LedgerReader {
   execute(groupId, commands: Command[], opts: { channel; actorMemberId; idempotencyKey? }):
     Promise<Result<LedgerEntry[], DomainError | { code: 'CHAIN_CONFLICT'; retryable: true }>>;
   registerMember(groupId, registrarId, input): Promise<Result<Member, DomainError>>;
-  saveCheckpoint(groupId, leaderId): Promise<Result<Checkpoint, DomainError>>; // R17
 }
 createLedgerReader(db: Db): LedgerReader;            // MCP and agent: READONLY_DATABASE_URL (ghost_readonly)
 createLedgerWriter(db: Db, deps: { clock: () => Date; newId: () => Uuid }): LedgerWriter;  // app: DATABASE_URL (ghost_app)
@@ -423,7 +421,7 @@ createLedgerWriter(db: Db, deps: { clock: () => Date; newId: () => Uuid }): Ledg
 2. Create the 2 Auth users with the Supabase Admin API (`auth.admin.createUser`, `email_confirm: true`):
    - emails `tubeera.chair@example.com` and `tubeera.treasurer@example.com` (the domain is reserved and never receives mail);
    - password from `DEMO_LEADER_PASSWORD`;
-   - needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. The service-role key is used only by this script, never by the app.
+   - needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. **The service-role key must never be in the app's environment** (Vercel or `.env.local` for `next dev`): it bypasses RLS and every grant. Only this script, run from a developer machine, reads it.
 3. Insert the group, members (with `auth_user_id`), empty credential rows and entries in one transaction.
 
 The Auth step sits behind an `AuthAdmin` interface, so tests use a fake.
@@ -494,7 +492,7 @@ Ledgers are generated as random `Command` sequences run through `executeAll`, ke
 | P24 | reversal and burst rules match a brute-force oracle on small inputs; each entry appears at most once per rule | 12.5–12.8 |
 | P25 | for any anchor date, the seed verifies, has 1 overdue loan and exactly the 2 planted anomalies, and is deterministic | 14.2–14.7 |
 | P26 | random millisecond timestamps round-trip through PGlite byte-identical (PGlite; `numRuns` lowered) | 13.7, §2.3 |
-| P27 | truncating after a checkpoint gives `TRUNCATED`; a changed checkpoint entry gives `CHECKPOINT_MISMATCH` | 17.4, 17.5 |
+| P27 | (dropped with R17) | – |
 | P28 | deposit request and confirmation are accepted iff a reference model says so (leader, not self, pending, minimum); every confirmation in a command ledger confirms an earlier pending request by a different leader; loan limits use confirmed savings only | 9.1, 9.2, 9.4–9.8 |
 | P29 | reversals by a non-leader are always rejected with `NOT_A_LEADER` | 4.12 |
 | P30 | command ledgers produce no `DEPOSIT_WITHOUT_REQUEST`; a forged confirmation (no request, wrong member or amount, double confirmation, self-confirmed) gets it flagged | 12.10 |
@@ -519,7 +517,7 @@ Ledgers are generated as random `Command` sequences run through `executeAll`, ke
 | R14 Seed | env guards (14.10); Auth step with fake `AuthAdmin` (14.11) | P25 | seed into PGlite; second run refused (14.9) | – |
 | R15 Tamper | `ALLOW_TAMPER_DEMO` guard; uses `ADMIN_DATABASE_URL` only | – | tamper → `HASH_MISMATCH` at seq; restore → verified; output text; refuses as `ghost_app` (15.6) | – |
 | R16 Property tests | – | test titles name their requirement ids (testing.md) | – | – |
-| R17 Checkpoints | `NOT_A_LEADER` | P27 | checkpoints append-only; save and verify | – |
+| R17 Checkpoints | dropped | – | – | – |
 
 ## 12. Implementation order (for tasks.md)
 
@@ -534,9 +532,9 @@ Ledgers are generated as random `Command` sequences run through `executeAll`, ke
 9. Seed builder and seed script (with demo Auth accounts).
 10. Tamper and restore scripts.
 11. Concurrency integration test, `test:integration`, and README check.
-12. **R17 checkpoints (last; optional):** migration, domain checks in `verifyChain`, `saveCheckpoint`.
+12. ~~R17 checkpoints~~ (dropped at the task 18 review).
 
 ## 13. Decisions
 
 1. **Genesis hash.** It stays at 64 zeros (§2.2 explains why that is safe).
-2. **App database role.** `ghost_app` is added (§6). It has `SELECT` and `INSERT` on the ledger and checkpoint tables, and column-level `UPDATE` only on the credential columns, which live in their own `member_credentials` table.
+2. **App database role.** `ghost_app` is added (§6). It has `SELECT` and `INSERT` on the ledger table, and column-level `UPDATE` only on the credential columns, which live in their own `member_credentials` table.

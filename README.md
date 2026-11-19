@@ -31,5 +31,6 @@ npm run test:integration
 `npm run test:integration` connects to `INTEGRATION_DATABASE_URL`, which defaults to the local Supabase database at `postgresql://postgres:postgres@127.0.0.1:54322/postgres`. It refuses to run against any host other than `127.0.0.1` or `localhost`. Run `npx supabase db reset` before each run, because test entries can't be deleted from the append-only ledger.
 
 ## Roadmap
+- **Checkpoints.** Let a leader save the chain head (seq and hash) and copy it into the paper record book, so deleting the newest entries can be detected later. A hash chain alone can't detect truncation of its tail.
 
 - **Share-out.** End-of-cycle calculation that divides the loan fund (savings plus interest) among members in proportion to their savings, then closes the cycle. Cycle dates are already stored; the calculation is not built yet.
