@@ -72,6 +72,21 @@ describe("resolveSavedFile", () => {
     });
   });
 
+  it("handles the real Kiro IDE PostFileSave payload (captured 2026-11-19)", () => {
+    // Note the drive-letter case differs between cwd and file_path.
+    const stdin = JSON.stringify({
+      session_id: "sess_37304cd5-efcd-4cf9-985f-39578517d2d1",
+      hook_event_name: "PostFileSave",
+      cwd: "c:\\dev\\ghost-ledger",
+      file_path: "C:\\dev\\ghost-ledger\\src\\domain\\result.ts",
+    });
+    expect(resolveSavedFile(stdin, { cwd: "/elsewhere" })).toEqual({
+      ok: true,
+      root: "c:\\dev\\ghost-ledger",
+      relative: "src/domain/result.ts",
+    });
+  });
+
   it("falls back to the process cwd and the --file argument", () => {
     expect(resolveSavedFile("", { cwd: POSIX_ROOT, fallbackPath: "src/x.ts" })).toEqual({
       ok: true,

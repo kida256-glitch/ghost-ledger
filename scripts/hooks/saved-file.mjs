@@ -8,11 +8,12 @@
 //   --file <path> (optional, either mode)
 //       Fallback path when the STDIN event has none (e.g. from `{{filePath}}`).
 //
-// The event arrives as JSON on STDIN. The Kiro docs don't name the field that
-// carries the path for file saves, so several candidate keys are checked, and
-// a positional argument (e.g. from a `{{filePath}}` template) is the fallback.
-// The raw payload is copied to the OS temp dir so the real field can be
-// confirmed (see KIRO_USAGE.md). File-save payloads carry paths and session
+// The event arrives as JSON on STDIN. Kiro IDE sends
+//   { session_id, hook_event_name: "PostFileSave", cwd, file_path }
+// (confirmed from a real payload, see KIRO_USAGE.md). `cwd` and `file_path`
+// can differ in drive-letter case on Windows. Other keys and the `--file`
+// argument are kept as fallbacks in case another Kiro client differs.
+// The raw payload is copied to the OS temp dir for diagnostics. File-save payloads carry paths and session
 // metadata only; nothing secret is expected in them.
 
 import { spawnSync } from "node:child_process";
