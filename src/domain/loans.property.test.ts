@@ -2,7 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { listOverdueLoans } from "./index";
 import { scenarioArb, type Scenario } from "./testing/arbitraries";
-import { ALICE, Ledger } from "./testing/fixtures";
+import { ALICE, CHAIR, Ledger } from "./testing/fixtures";
 
 /** Brute force from the raw entries: no replay state, no loan helpers. */
 function overdueOracle(entries: readonly import("./index").LedgerEntry[], asOf: string) {
@@ -40,7 +40,7 @@ describe("loan properties", () => {
           l.borrow(ALICE, 10_000, term);
           const owed = 10_000 + (l.entries.at(-1)?.interestAmount ?? 0);
           const repay = Math.floor((owed * repaidPermille) / 1_000);
-          if (repay > 0) l.must(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: repay }));
+          if (repay > 0) l.must(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: repay }));
           const due = l.entries.find((e) => e.type === "LOAN_DISBURSEMENT")?.dueDate as string;
           const asOf = new Date(Date.parse(`${due}T00:00:00.000Z`) - 3 * 3_600_000 + offset * 60_000).toISOString();
           expect(listOverdueLoans(l.state, asOf)).toEqual(overdueOracle(l.entries, asOf));

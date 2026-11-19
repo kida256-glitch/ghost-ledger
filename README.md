@@ -12,7 +12,9 @@ _TBD_
 
 ## Environment variables
 
-_TBD. See `.env.example` once added._
+See `.env.example` for the full list.
+
+> **Never put `SUPABASE_SERVICE_ROLE_KEY` in the app's environment** (Vercel project settings or `.env.local` used by `next dev`). It bypasses Row Level Security and every grant. Only `npm run db:seed`, run from a developer machine, reads it. The app connects as `ghost_app` (`DATABASE_URL`), and the agent and MCP server connect as `ghost_readonly` (`READONLY_DATABASE_URL`).
 
 ## Running tests
 

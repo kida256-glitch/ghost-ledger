@@ -59,6 +59,13 @@ function inGroup(state: LedgerState, memberId: Uuid) {
 const actorOf = (state: LedgerState, ctx: CommandContext) =>
   ctx.actorMemberId === null ? undefined : state.members.get(ctx.actorMemberId);
 
+/** R9.9 money-in rule: an active leader of the group who isn't the credited member. */
+function moneyInRecorder(state: LedgerState, ctx: CommandContext, memberId: Uuid): DomainError | null {
+  if (!isLeaderOf(actorOf(state, ctx), state.group.id)) return { code: "NOT_A_LEADER" };
+  if (ctx.actorMemberId === memberId) return { code: "SELF_APPROVAL" };
+  return null;
+}
+
 /** R10.11–10.13 shared by approve, reject and disburse. */
 function leaderActionOn(state: LedgerState, loanId: Uuid, ctx: CommandContext): Result<LoanRecord, DomainError> {
   const loan = state.loans.get(loanId);
@@ -83,6 +90,10 @@ function draftFor(state: LedgerState, cmd: Command, ctx: CommandContext): Result
     case "requestDeposit":
     case "contributeSocialFund": {
       if (!inGroup(state, cmd.memberId)) return err({ code: "MEMBER_NOT_FOUND" });
+      if (cmd.kind === "contributeSocialFund") {
+        const recorder = moneyInRecorder(state, ctx, cmd.memberId);
+        if (recorder) return err(recorder);
+      }
       // R9.4: on the dashboard, or for someone else, only a leader can record a deposit request.
       if (cmd.kind === "requestDeposit" && (ctx.channel === "dashboard" || (ctx.actorMemberId !== null && ctx.actorMemberId !== cmd.memberId))) {
         if (!isLeaderOf(actorOf(state, ctx), state.group.id)) return err({ code: "NOT_A_LEADER" });
@@ -181,6 +192,8 @@ function draftFor(state: LedgerState, cmd: Command, ctx: CommandContext): Result
 
     case "repayLoan": {
       if (!inGroup(state, cmd.memberId)) return err({ code: "MEMBER_NOT_FOUND" });
+      const recorder = moneyInRecorder(state, ctx, cmd.memberId);
+      if (recorder) return err(recorder);
       const amount = parseUgx(cmd.amount);
       if (!amount.ok) return amount;
       const loan = activeLoan(state, cmd.memberId);

@@ -23,9 +23,18 @@ grant insert (member_id) on member_credentials to ghost_app;
 grant update (pin_hash, failed_attempts, locked_until) on member_credentials to ghost_app;
 grant select on groups, members, ledger_entries to ghost_readonly;
 
--- Supabase grants broad privileges to its API roles by default; take them all back.
--- (TRUNCATE is not subject to RLS, so the revoke matters, not just the policies.)
-revoke all on groups, members, member_credentials, ledger_entries from anon, authenticated;
+-- Supabase grants broad privileges to its API roles by default; take them all back
+-- (R13.9). TRUNCATE is not subject to RLS, and service_role bypasses RLS entirely,
+-- so the revokes are the real protection for these roles, not the policies.
+revoke all on groups, members, member_credentials, ledger_entries from anon, authenticated, service_role;
+
+-- Future tables, functions and sequences created by this role (the migration
+-- owner) start with no privileges for the API roles either. Supabase also keeps
+-- default privileges for its own admin role; those only apply to objects that
+-- role creates, and our migrations never run as it.
+alter default privileges in schema public revoke all on tables from anon, authenticated, service_role;
+alter default privileges in schema public revoke all on sequences from anon, authenticated, service_role;
+alter default privileges in schema public revoke all on functions from anon, authenticated, service_role;
 
 alter table groups enable row level security;
 alter table members enable row level security;

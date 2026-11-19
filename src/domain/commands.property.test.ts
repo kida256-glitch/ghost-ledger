@@ -55,6 +55,8 @@ function expectedError(before: LedgerState, cmd: Command, ctx: CommandContext): 
     case "requestDeposit":
     case "contributeSocialFund":
       if (!inGroup(cmd.memberId)) return { code: "MEMBER_NOT_FOUND" };
+      if (cmd.kind === "contributeSocialFund" && !actorIsLeader) return { code: "NOT_A_LEADER" };
+      if (cmd.kind === "contributeSocialFund" && ctx.actorMemberId === cmd.memberId) return { code: "SELF_APPROVAL" };
       if (cmd.kind === "requestDeposit" && (ctx.channel === "dashboard" || (ctx.actorMemberId !== null && ctx.actorMemberId !== cmd.memberId)) && !actorIsLeader) {
         return { code: "NOT_A_LEADER" };
       }
@@ -97,6 +99,8 @@ function expectedError(before: LedgerState, cmd: Command, ctx: CommandContext): 
     }
     case "repayLoan": {
       if (!inGroup(cmd.memberId)) return { code: "MEMBER_NOT_FOUND" };
+      if (!actorIsLeader) return { code: "NOT_A_LEADER" };
+      if (ctx.actorMemberId === cmd.memberId) return { code: "SELF_APPROVAL" };
       if (!validAmount(cmd.amount)) return { code: "INVALID_AMOUNT" };
       const active = memberSummary(before, cmd.memberId)?.loans.find((l) => l.status === "disbursed");
       if (!active) return { code: "NO_ACTIVE_LOAN" };
@@ -351,11 +355,11 @@ describe("command properties", () => {
             // R11.1, R11.2: exactly the outstanding is accepted, one more is not.
             const owed = principal + (disb.value.entry.interestAmount ?? 0);
             for (const delta of [1, 0]) {
-              const r = execute(state, { kind: "repayLoan", memberId: borrower.id, amount: owed + delta }, ctx(borrower.id, "ussd"));
+              const r = execute(state, { kind: "repayLoan", memberId: borrower.id, amount: owed + delta }, ctx(memberId(0)));
               expect(r.ok ? null : r.error).toEqual(delta > 0 ? { code: "EXCEEDS_OUTSTANDING", outstanding: owed } : null);
             }
             // R4.8: once anything is repaid, the disbursement can't be reversed.
-            const paid = execute(state, { kind: "repayLoan", memberId: borrower.id, amount: 1 }, ctx(borrower.id, "ussd"));
+            const paid = execute(state, { kind: "repayLoan", memberId: borrower.id, amount: 1 }, ctx(memberId(0)));
             expect(paid.ok).toBe(true);
             if (paid.ok) {
               const rev = execute(paid.value.state, { kind: "reverseEntry", entryId: disb.value.entry.id, reason: "Audit" }, ctx(memberId(0)));
@@ -416,6 +420,36 @@ describe("command properties", () => {
           expect(r.ok).toBe(false);
           if (targetOk && !(rec.type === "LOAN_DISBURSEMENT" && (s.state.loans.get(rec.loanId ?? "")?.repaymentIds.length ?? 0) > 0)) {
             expect(r.ok ? null : r.error).toEqual({ code: "NOT_A_LEADER" });
+          }
+        }
+      }),
+    );
+  });
+
+  it("P31 R9.3 R9.9 R11.1 money-in rule: cash in is only ever recorded by an active leader who isn't the member", () => {
+    fc.assert(
+      fc.property(scenarios, (s) => {
+        const cashIn = new Set(["DEPOSIT_CONFIRMATION", "LOAN_REPAYMENT", "SOCIAL_FUND_CONTRIBUTION"]);
+        for (const e of s.entries) {
+          if (!cashIn.has(e.type)) continue;
+          const actor = s.members.find((m) => m.id === e.actorMemberId);
+          expect(actor && actor.groupId === s.group.id && actor.status === "active" && actor.role !== "member").toBe(true);
+          expect(e.actorMemberId).not.toBe(e.subjectMemberId);
+        }
+        // Every member trying to record a contribution or repayment for every member.
+        const now = s.state.headOccurredAt ?? "2026-01-03T07:00:00.000Z";
+        for (const recorder of s.members) {
+          for (const member of s.members.filter((m) => m.groupId === s.group.id)) {
+            for (const kind of ["contributeSocialFund", "repayLoan"] as const) {
+              const ctx: CommandContext = { now, newId: idSeq(), channel: "dashboard", actorMemberId: recorder.id };
+              const cmd: Command = { kind, memberId: member.id, amount: 1 };
+              const r = execute(s.state, cmd, ctx);
+              const leader = recorder.groupId === s.group.id && recorder.status === "active" && recorder.role !== "member";
+              const code = r.ok ? null : r.error.code;
+              if (!leader) expect(code).toBe("NOT_A_LEADER");
+              else if (recorder.id === member.id) expect(code).toBe("SELF_APPROVAL");
+              else expect(code === "NOT_A_LEADER" || code === "SELF_APPROVAL").toBe(false);
+            }
           }
         }
       }),

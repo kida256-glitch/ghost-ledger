@@ -11,7 +11,7 @@ describe("task 9: deposits, social fund, invariants", () => {
     expect(req).toMatchObject({ type: "DEPOSIT_REQUEST", seq: 1, amount: 5_000, subjectMemberId: ALICE.id, actorMemberId: ALICE.id, channel: "ussd" });
     const conf = l.must(l.by(CHAIR, { kind: "confirmDeposit", requestEntryId: req.id }));
     expect(conf).toMatchObject({ type: "DEPOSIT_CONFIRMATION", amount: 5_000, subjectMemberId: ALICE.id, actorMemberId: CHAIR.id, confirmsEntryId: req.id });
-    l.must(l.self(ALICE, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1_000 }));
+    l.must(l.by(CHAIR, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1_000 }));
     expect(memberSummary(l.state, ALICE.id)).toMatchObject({ savings: 5_000, socialFund: 1_000, loanLimit: 15_000 });
     expect(groupSummary(l.state)).toMatchObject({ totalSavings: 5_000, totalSocialFund: 1_000, groupCash: 6_000, pendingDeposits: [] });
     expect(verifyChain(l.entries)).toMatchObject({ ok: true, count: 3 });
@@ -54,7 +54,7 @@ describe("task 9: deposits, social fund, invariants", () => {
   it("INVALID_DEPOSIT_STATE for an unknown request, a non-request entry and an already-confirmed request (R9.7)", () => {
     const l = new Ledger();
     expect(l.by(CHAIR, { kind: "confirmDeposit", requestEntryId: UNKNOWN })).toEqual(error({ code: "INVALID_DEPOSIT_STATE" }));
-    const social = l.must(l.self(ALICE, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1_000 }));
+    const social = l.must(l.by(CHAIR, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1_000 }));
     expect(l.by(CHAIR, { kind: "confirmDeposit", requestEntryId: social.id })).toEqual(error({ code: "INVALID_DEPOSIT_STATE" }));
     const req = l.requestDeposit(ALICE, 5_000);
     l.must(l.by(CHAIR, { kind: "confirmDeposit", requestEntryId: req.id }));
@@ -75,7 +75,7 @@ describe("task 9: deposits, social fund, invariants", () => {
     expect(l.self(ALICE, { kind: "requestDeposit", memberId: ALICE.id, amount: 1_999 })).toEqual(
       error({ code: "BELOW_MIN_DEPOSIT", minDeposit: 2_000 }),
     );
-    expect(l.self(ALICE, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1 }).ok).toBe(true);
+    expect(l.by(CHAIR, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1 }).ok).toBe(true);
   });
 
   it.each([0, -1, 1.5, Number.NaN, 50_000_001])("INVALID_AMOUNT for %s", (amount) => {
@@ -96,7 +96,7 @@ describe("task 9: deposits, social fund, invariants", () => {
     const l = new Ledger();
     l.deposit(SUSPENDED, 5_000);
     expect(memberSummary(l.state, SUSPENDED.id)?.savings).toBe(5_000);
-    expect(l.self(SUSPENDED, { kind: "repayLoan", memberId: SUSPENDED.id, amount: 1 })).toEqual(error({ code: "NO_ACTIVE_LOAN" }));
+    expect(l.by(CHAIR, { kind: "repayLoan", memberId: SUSPENDED.id, amount: 1 })).toEqual(error({ code: "NO_ACTIVE_LOAN" }));
   });
 
   it("OUT_OF_ORDER when now is earlier than the head", () => {
@@ -111,12 +111,16 @@ describe("task 9: deposits, social fund, invariants", () => {
 
   it("throws on a context that breaks R4.10 (programmer error)", () => {
     const l = new Ledger();
-    const social = { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1_000 } as const;
-    expect(() => l.try(social, l.ctx("ussd", BOB.id))).toThrow(TypeError);
-    expect(() => l.try(social, l.ctx("dashboard", null))).toThrow(TypeError);
-    expect(() => l.try(social, l.ctx("system", CHAIR.id))).toThrow(TypeError);
-    expect(l.try(social, l.ctx("seed", null)).ok).toBe(true);
-    expect(l.try(social, l.ctx("seed", CHAIR.id)).ok).toBe(true);
+    l.deposit(ALICE, 5_000);
+    const request = { kind: "requestDeposit", memberId: ALICE.id, amount: 5_000 } as const;
+    const loan = { kind: "requestLoan", memberId: ALICE.id, principal: 1_000, termMonths: 1 } as const;
+    // A leader recording for Alice passes the business rules, but USSD must be Alice herself.
+    expect(() => l.try(request, l.ctx("ussd", CHAIR.id))).toThrow(TypeError);
+    expect(() => l.try(loan, l.ctx("dashboard", null))).toThrow(TypeError);
+    expect(() => l.try(request, l.ctx("system", CHAIR.id))).toThrow(TypeError);
+    expect(l.try(request, l.ctx("seed", null)).ok).toBe(true);
+    expect(l.try(request, l.ctx("seed", CHAIR.id)).ok).toBe(true);
+    void BOB;
   });
 
   it("throws on a malformed now", () => {
@@ -161,7 +165,7 @@ describe("task 10: reversals", () => {
     l.deposit(ALICE, 10_000);
     l.borrow(ALICE, 5_000);
     const disbursement = l.entries.at(-1);
-    const repay = l.must(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 1_000 }));
+    const repay = l.must(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 1_000 }));
     const reverseDisb = { kind: "reverseEntry", entryId: disbursement?.id ?? "", reason: "Wrong borrower" } as const;
     expect(l.by(CHAIR, reverseDisb)).toEqual(error({ code: "INVALID_REVERSAL" }));
     l.must(l.by(CHAIR, { kind: "reverseEntry", entryId: repay.id, reason: "Bounced" }));
@@ -174,7 +178,7 @@ describe("task 10: reversals", () => {
     const l = new Ledger();
     l.deposit(ALICE, 10_000);
     l.borrow(ALICE, 10_000);
-    const repay = l.must(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 11_000 }));
+    const repay = l.must(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 11_000 }));
     expect(memberSummary(l.state, ALICE.id)?.loans[0]?.status).toBe("repaid");
     l.must(l.by(CHAIR, { kind: "reverseEntry", entryId: repay.id, reason: "Bounced" }));
     expect(memberSummary(l.state, ALICE.id)?.loans[0]).toMatchObject({ status: "disbursed", outstanding: 11_000 });
@@ -259,7 +263,7 @@ describe("task 11: loan request, approval and rejection", () => {
     expect(request(l, 1_000, 1)).toEqual(error({ code: "OPEN_LOAN_EXISTS" }));
     l.must(l.by(TREASURER, { kind: "disburseLoan", loanId: second }));
     expect(request(l, 1_000, 1)).toEqual(error({ code: "OPEN_LOAN_EXISTS" }));
-    l.must(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 1_100 }));
+    l.must(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 1_100 }));
     expect(request(l, 1_000, 1).ok).toBe(true);
   });
 
@@ -411,26 +415,38 @@ describe("task 13: repayments", () => {
 
   it("partial repayments, then repaid", () => {
     const l = borrowed();
-    l.must(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 4_000 }));
+    l.must(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 4_000 }));
     expect(memberSummary(l.state, ALICE.id)).toMatchObject({ outstanding: 7_000, loans: [expect.objectContaining({ status: "disbursed", repaid: 4_000 })] });
-    l.must(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 7_000 }));
+    l.must(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 7_000 }));
     expect(memberSummary(l.state, ALICE.id)?.loans[0]).toMatchObject({ status: "repaid", outstanding: 0 });
     expect(groupSummary(l.state)).toMatchObject({ groupCash: 11_000, totalOutstanding: 0 });
   });
 
   it("EXCEEDS_OUTSTANDING carries the outstanding", () => {
     const l = borrowed();
-    expect(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 11_001 })).toEqual(
+    expect(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 11_001 })).toEqual(
       error({ code: "EXCEEDS_OUTSTANDING", outstanding: 11_000 }),
     );
+  });
+
+  it("R9.9 members can't record their own repayment or contribution, over USSD or the dashboard", () => {
+    const l = borrowed();
+    expect(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 1_000 })).toEqual(error({ code: "NOT_A_LEADER" }));
+    expect(l.self(ALICE, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1_000 })).toEqual(error({ code: "NOT_A_LEADER" }));
+    expect(l.by(BOB, { kind: "repayLoan", memberId: ALICE.id, amount: 1_000 })).toEqual(error({ code: "NOT_A_LEADER" }));
+    l.deposit(CHAIR, 10_000);
+    expect(l.by(CHAIR, { kind: "contributeSocialFund", memberId: CHAIR.id, amount: 1_000 })).toEqual(error({ code: "SELF_APPROVAL" }));
+    expect(l.self(CHAIR, { kind: "contributeSocialFund", memberId: CHAIR.id, amount: 1_000 })).toEqual(error({ code: "SELF_APPROVAL" }));
+    expect(l.by(TREASURER, { kind: "contributeSocialFund", memberId: CHAIR.id, amount: 1_000 }).ok).toBe(true);
+    expect(l.by(TREASURER, { kind: "repayLoan", memberId: ALICE.id, amount: 1_000 }).ok).toBe(true);
   });
 
   it("NO_ACTIVE_LOAN before disbursement and after full repayment", () => {
     const l = new Ledger();
     l.deposit(ALICE, 10_000);
-    expect(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 1 })).toEqual(error({ code: "NO_ACTIVE_LOAN" }));
+    expect(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 1 })).toEqual(error({ code: "NO_ACTIVE_LOAN" }));
     l.borrow(ALICE, 1_000, 1);
-    l.must(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 1_100 }));
-    expect(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 1 })).toEqual(error({ code: "NO_ACTIVE_LOAN" }));
+    l.must(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 1_100 }));
+    expect(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 1 })).toEqual(error({ code: "NO_ACTIVE_LOAN" }));
   });
 });

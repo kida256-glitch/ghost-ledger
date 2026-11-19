@@ -7,9 +7,9 @@ describe("summaries (R7.2, R7.3)", () => {
     const l = new Ledger();
     l.deposit(ALICE, 10_000);
     l.deposit(BOB, 10_000);
-    l.must(l.self(ALICE, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1_000 }));
+    l.must(l.by(CHAIR, { kind: "contributeSocialFund", memberId: ALICE.id, amount: 1_000 }));
     const loanId = l.borrow(ALICE, 20_000, 2); // interest ceil(20,000 × 1,000 × 2 / 10,000) = 4,000
-    l.must(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 5_000 }));
+    l.must(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 5_000 }));
     const bobLoan = l.must(l.self(BOB, { kind: "requestLoan", memberId: BOB.id, principal: 3_000, termMonths: 1 })).loanId;
 
     expect(memberSummary(l.state, ALICE.id)).toEqual({
@@ -61,7 +61,7 @@ describe("listOverdueLoans (R11.6)", () => {
 
   it("repaid, requested and approved loans are never overdue", () => {
     const { l } = ledger();
-    l.must(l.self(ALICE, { kind: "repayLoan", memberId: ALICE.id, amount: 11_000 }));
+    l.must(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 11_000 }));
     l.deposit(BOB, 10_000);
     const req = l.must(l.self(BOB, { kind: "requestLoan", memberId: BOB.id, principal: 1_000, termMonths: 1 }));
     l.must(l.by(CHAIR, { kind: "approveLoan", loanId: req.loanId as Uuid }));

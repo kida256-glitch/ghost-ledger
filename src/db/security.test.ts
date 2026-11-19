@@ -3,44 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { LedgerEntry } from "../domain";
 import { ALICE, BOB, CHAIR, GROUP, Ledger, TREASURER } from "../domain/testing/fixtures";
 import { asRole, createTestDb, sqlError } from "./testing/pglite";
+import { MATRIX, checkPrivileges } from "./testing/privileges";
 import { insertEntry, insertGroup, insertMember } from "./testing/rows";
-
-/**
- * Privilege matrix (design §6.2), as data. Every table in `public` must be
- * listed here; a new table without an entry fails the test, so later specs
- * have to declare their grants.
- */
-const TABLE_PRIVILEGES = ["SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"] as const;
-type Privilege = (typeof TABLE_PRIVILEGES)[number];
-
-const MATRIX: Record<string, Record<string, { table: Privilege[]; insertColumns?: string[]; updateColumns?: string[] }>> = {
-  groups: {
-    ghost_app: { table: ["SELECT"] },
-    ghost_readonly: { table: ["SELECT"] },
-    anon: { table: [] },
-    authenticated: { table: [] },
-  },
-  members: {
-    ghost_app: { table: ["SELECT", "INSERT"] },
-    ghost_readonly: { table: ["SELECT"] },
-    anon: { table: [] },
-    authenticated: { table: [] },
-  },
-  member_credentials: {
-    // Column grants only for INSERT and UPDATE (design §6.2).
-    ghost_app: { table: ["SELECT"], insertColumns: ["member_id"], updateColumns: ["pin_hash", "failed_attempts", "locked_until"] },
-    ghost_readonly: { table: [] },
-    anon: { table: [] },
-    authenticated: { table: [] },
-  },
-  ledger_entries: {
-    ghost_app: { table: ["SELECT", "INSERT"] },
-    ghost_readonly: { table: ["SELECT"] },
-    anon: { table: [] },
-    authenticated: { table: [] },
-  },
-};
-const ROLES = ["ghost_app", "ghost_readonly", "anon", "authenticated"];
 
 let db: PGlite;
 let ids = 0;
@@ -87,30 +51,28 @@ async function nextEntries(build: (l: Ledger) => void): Promise<LedgerEntry[]> {
 }
 
 describe("task 18: privilege matrix (R13.8, R13.9, R13.12)", () => {
-  it("every table in public is declared in the matrix and has RLS enabled", async () => {
-    const r = await db.query<{ relname: string; relrowsecurity: boolean }>(
-      "select c.relname, c.relrowsecurity from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' order by 1",
-    );
-    expect(r.rows.map((x) => x.relname).sort()).toEqual(Object.keys(MATRIX).sort());
-    for (const row of r.rows) expect([row.relname, row.relrowsecurity]).toEqual([row.relname, true]);
+  it("every table is declared, has RLS on, and every role × table × privilege (and column grant) matches the matrix, incl. service_role", async () => {
+    expect(await checkPrivileges(db)).toEqual([]);
   });
 
-  it.each(Object.keys(MATRIX).flatMap((t) => ROLES.map((role) => [t, role] as const)))("%s × %s matches the matrix", async (table, role) => {
-    const expected = MATRIX[table]?.[role];
-    if (!expected) throw new Error(`matrix has no entry for ${table} × ${role}`);
-    for (const priv of TABLE_PRIVILEGES) {
-      const r = await db.query<{ has: boolean }>("select has_table_privilege($1, $2, $3) as has", [role, `public.${table}`, priv]);
-      expect([priv, r.rows[0]?.has]).toEqual([priv, expected.table.includes(priv)]);
-    }
-    const cols = await db.query<{ column_name: string }>("select column_name from information_schema.columns where table_schema = 'public' and table_name = $1", [table]);
-    for (const { column_name } of cols.rows) {
-      for (const [priv, granted] of [
-        ["INSERT", expected.insertColumns ?? (expected.table.includes("INSERT") ? [column_name] : [])],
-        ["UPDATE", expected.updateColumns ?? (expected.table.includes("UPDATE") ? [column_name] : [])],
-      ] as const) {
-        const r = await db.query<{ has: boolean }>("select has_column_privilege($1, $2, $3, $4) as has", [role, `public.${table}`, column_name, priv]);
-        expect([column_name, priv, r.rows[0]?.has]).toEqual([column_name, priv, granted.includes(column_name)]);
+  it("future tables give the API roles nothing either (default privileges revoked)", async () => {
+    await db.exec("begin; create table zz_future (id int);");
+    try {
+      for (const role of ["anon", "authenticated", "service_role"]) {
+        const r = await db.query<{ has: boolean }>("select has_table_privilege($1, 'public.zz_future', 'SELECT') as has", [role]);
+        expect([role, r.rows[0]?.has]).toEqual([role, false]);
       }
+    } finally {
+      await db.exec("rollback");
+    }
+  });
+
+  it("the matrix checker notices a stray grant (it can fail)", async () => {
+    await db.exec("begin; grant select on member_credentials to ghost_readonly;");
+    try {
+      expect(await checkPrivileges(db)).toEqual(["member_credentials × ghost_readonly: SELECT is true, expected false"]);
+    } finally {
+      await db.exec("rollback");
     }
   });
 
@@ -233,8 +195,8 @@ describe("task 18: behaviour as ghost_readonly", () => {
   });
 });
 
-describe("task 18: behaviour as anon and authenticated", () => {
-  it.each(["anon", "authenticated"])("%s gets a permission error on every table (the Supabase API exposes nothing)", async (role) => {
+describe("task 18: behaviour as anon, authenticated and service_role", () => {
+  it.each(["anon", "authenticated", "service_role"])("%s gets a permission error on every table (the Supabase API exposes nothing)", async (role) => {
     for (const t of Object.keys(MATRIX)) {
       await asRole(db, role, async (tx) => {
         expect([t, (await sqlError(() => tx.exec(`select * from ${t}`)))?.code]).toEqual([t, "42501"]);

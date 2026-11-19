@@ -234,7 +234,7 @@ export type Intent =
   | { kind: "requestLoan"; member: number; permille: number; termMonths: number; raw: number | null; exact: number | null }
   | { kind: "approveLoan" | "disburseLoan"; loan: number; actor: number }
   | { kind: "rejectLoan"; loan: number; actor: number; reason: string }
-  | { kind: "repayLoan"; member: number; permille: number; raw: number | null; exact: number | null }
+  | { kind: "repayLoan"; member: number; permille: number; raw: number | null; exact: number | null; recorder: number }
   | { kind: "reverseEntry"; entry: number; actor: number; reason: string }
   | { kind: "unknownMember"; amount: number };
 
@@ -271,6 +271,8 @@ export const intentArb: fc.Arbitrary<Intent> = fc.oneof(
     arbitrary: fc.record({
       kind: fc.constant("repayLoan" as const),
       member: pick,
+      // Mostly a leader (members 0 and 1), sometimes anyone, so the money-in rule is exercised.
+      recorder: fc.oneof({ weight: 4, arbitrary: fc.integer({ min: 0, max: 1 }) }, { weight: 1, arbitrary: pick }),
       permille: fc.integer({ min: 0, max: 1_200 }),
       raw: rarely(fc.constantFrom(0, 1.5, 1)),
       // Sometimes exactly the outstanding, or one either side of it.
@@ -350,7 +352,9 @@ export function resolveIntent(
       const outstanding = loan ? (loanOutstanding(loan) ?? 0) : 1_000;
       const amount =
         intent.raw ?? (intent.exact !== null ? outstanding + intent.exact : Math.max(1, Math.floor((outstanding * intent.permille) / 1_000)));
-      return { command: { kind: "repayLoan", memberId: id, amount }, ctx: self(id) };
+      // The borrower can't record their own repayment (R9.9); every 7th try does, to test that.
+      const recorder = member(intent.recorder) === id ? member(intent.recorder + 1) : member(intent.recorder);
+      return { command: { kind: "repayLoan", memberId: id, amount }, ctx: intent.recorder % 7 === 6 ? self(id) : dash(recorder) };
     }
     case "reverseEntry": {
       const entryIds = [...state.entries.keys()];

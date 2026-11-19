@@ -194,7 +194,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Covers (added): 4.13.
   - Unit test: the roles-login statement escapes the password and never logs it.
 
-- [ ] 18a. Money-in rule and Supabase role revokes (task 18 review)
+- [x] 18a. Money-in rule and Supabase role revokes (task 18 review)
   - Contents:
     - domain: `repayLoan` and `contributeSocialFund` require an active leader who isn't the member (R9.9), like `confirmDeposit`; tests, arbitraries and fixtures moved to leader-recorded cash in;
     - security migration: revoke all from `anon`, `authenticated` and `service_role` on every table, and in default privileges for future tables (R13.9); the matrix covers `service_role`;

@@ -6,9 +6,9 @@ A quick check that the property tests really test the rules. Each mutant breaks 
 - **Runtime:** about 10 s per mutant per run, so roughly 8 minutes per pass.
 - **Detection is random:** fast-check draws new inputs each run, so a property that hits a boundary rarely catches a mutant only sometimes. The final results below are from 2 runs per mutant.
 
-## Final results (task 15a, 45 mutants, 2 runs each)
+## Final results (48 mutants)
 
-All 45 mutants are caught by their own property test in both runs.
+All 48 mutants are caught by their own property test. The 45 from task 15a were caught in 2 of 2 runs each. The 3 money-in mutants added in task 18a were caught in 2 of 2 runs each. A full pass of all 48 after task 18a caught every one.
 
 | Rule | Mutation | Property test (title contains) | Result | History |
 |------|----------|--------------------------------|--------|---------|
@@ -32,6 +32,9 @@ All 45 mutants are caught by their own property test in both runs.
 | R9.6 (leader) | non-leaders can confirm | `P28` | caught 2/2 |  |
 | R9.6 (self) | leaders can confirm their own deposit | `P28` | caught 2/2 |  |
 | R9.7 | confirm a request that isn't pending | `P28` | caught 2/2 |  |
+| R9.9 (social) | a member (or non-leader) can record a social fund contribution | `P31` | caught 2/2 | New in task 18a (money-in rule). Caught from the first run. |
+| R9.9 (repay) | a member (or non-leader) can record a repayment | `P31` | caught 2/2 | New in task 18a. Caught from the first run. |
+| R9.9 (self) | a leader can record their own cash in | `P31` | caught 2/2 | New in task 18a. Caught from the first run. |
 | R3.10 | ignore the member's group | `P16` | caught 2/2 | Survived the first run: no member of another group took part. Fixed by adding an outsider to every generated group. |
 | R8.1 | drop the group-cash invariant | `P14` | caught 2/2 | Survived the first run: group cash was rarely low enough. Fixed with a targeted property that lends most of the cash, then tries every reversal. |
 | R10.3 | drop the open-loan check | `P17` | caught 2/2 |  |
