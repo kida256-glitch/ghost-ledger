@@ -11,4 +11,5 @@ export declare const RUN_LOG_TAIL_LINES: number;
 export type HookRun = { at: string; file: string; command: string; exitCode: number; output: string };
 export declare function formatRun(run: HookRun): string;
 export declare function appendRunLog(logPath: string, run: HookRun): void;
+export declare function acquireRunLock(key: string, waitMs?: number): { release: () => void } | null;
 export declare function fillCommand(command: string, relative: string): string;

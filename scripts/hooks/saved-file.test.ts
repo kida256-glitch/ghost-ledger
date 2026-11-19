@@ -1,9 +1,10 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  acquireRunLock,
   extractSavedPath,
   fillCommand,
   formatRun,
@@ -191,6 +192,60 @@ describe("run log", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+describe("duplicate-run lock", () => {
+  it("a second identical run is refused until the first releases", () => {
+    const key = `test-${Date.now()}-${Math.random()}`;
+    const first = acquireRunLock(key);
+    expect(first).not.toBeNull();
+    expect(acquireRunLock(key)).toBeNull();
+    expect(acquireRunLock(`${key}-other`)?.release()).toBeUndefined();
+    first?.release();
+    const again = acquireRunLock(key);
+    expect(again).not.toBeNull();
+    again?.release();
+  });
+
+  it("waits for an identical run to finish before taking the lock", () => {
+    const key = `wait-${Date.now()}-${Math.random()}`;
+    const held = acquireRunLock(key);
+    const started = Date.now();
+    expect(acquireRunLock(key, 500)).toBeNull(); // still held after 500 ms
+    expect(Date.now() - started).toBeGreaterThanOrEqual(450);
+    held?.release();
+    const next = acquireRunLock(key, 500);
+    expect(next).not.toBeNull();
+    next?.release();
+  });
+
+  it("the CLI runs identical saves one after the other, not at the same time", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "saved-file-lock-"));
+    const log = join(dir, "runs.log");
+    const marks = join(dir, "marks.txt");
+    const script = join(dir, "slow.mjs");
+    // Records start and end times; overlapping runs would interleave them.
+    writeFileSync(
+      script,
+      `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(marks)}, "start\\n");\nsetTimeout(() => appendFileSync(${JSON.stringify(marks)}, "end\\n"), 700);\n`,
+    );
+    try {
+      const input = JSON.stringify({ cwd: process.cwd(), file_path: join(process.cwd(), "src", "x.ts") });
+      const env = { ...process.env, GHOST_LEDGER_HOOK_RUN_LOG: log, GHOST_LEDGER_HOOK_LOG: join(dir, "p.json"), GHOST_LEDGER_HOOK_LOCK_DIR: dir };
+      const args = ["scripts/hooks/saved-file.mjs", "run", `node "${script}"`];
+      const runOnce = () =>
+        new Promise<number>((resolve) => {
+          const child = spawn(process.execPath, args, { env, stdio: ["pipe", "ignore", "ignore"] });
+          child.on("exit", (code) => resolve(code ?? 1));
+          child.stdin.end(input);
+        });
+      expect(await Promise.all([runOnce(), runOnce()])).toEqual([0, 0]);
+      expect(readFileSync(marks, "utf8")).toBe("start\nend\nstart\nend\n");
+      expect(readFileSync(log, "utf8").split("\n").filter((l) => l.startsWith("=== "))).toHaveLength(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
 });
 
 describe("CLI", () => {

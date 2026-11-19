@@ -20,7 +20,8 @@
 // metadata only; nothing secret is expected in them.
 
 import { spawnSync } from "node:child_process";
-import { appendFileSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, closeSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,6 +192,23 @@ async function main() {
     return;
   }
 
+  // Kiro can deliver the same save twice within a second. Two identical
+  // vitest runs at once crash each other ("Cannot read properties of
+  // undefined (reading 'config')"), so identical runs take turns.
+  const lock = acquireRunLock(commands.map((c) => fillCommand(c, resolved.relative)).join("\n"), LOCK_WAIT_MS);
+  try {
+    runAll(commands, resolved);
+  } finally {
+    lock?.release();
+  }
+}
+
+/** How long a run waits for an identical run to finish before going ahead anyway. */
+const LOCK_WAIT_MS = 120_000;
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/** @param {string[]} commands @param {{ root: string, relative: string }} resolved */
+function runAll(commands, resolved) {
   for (const command of commands) {
     const filled = fillCommand(command, resolved.relative);
     process.stdout.write(`> ${filled}\n`);
@@ -216,7 +234,46 @@ async function main() {
     } catch {
       // Diagnostics only: never fail a hook because the log can't be written.
     }
-    if (status !== 0) process.exit(status);
+    if (status !== 0) {
+      process.exitCode = status;
+      return;
+    }
+  }
+}
+
+/** A lock older than this is treated as left behind by a killed run. */
+const LOCK_STALE_MS = 10 * 60 * 1000;
+const LOCK_DIR = process.env.GHOST_LEDGER_HOOK_LOCK_DIR || tmpdir();
+
+/**
+ * Takes an exclusive lock named after a hash of `key`, in the OS temp dir,
+ * waiting up to `waitMs` for an identical run to release it. Returns null if
+ * it is still held after that (the caller may go ahead anyway).
+ *
+ * @param {string} key
+ * @param {number} [waitMs]
+ * @returns {{ release: () => void } | null}
+ */
+export function acquireRunLock(key, waitMs = 0) {
+  const name = `ghost-ledger-hook-${createHash("sha256").update(key).digest("hex").slice(0, 16)}.lock`;
+  const path = join(LOCK_DIR, name);
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    try {
+      closeSync(openSync(path, "wx"));
+      return { release: () => rmSync(path, { force: true }) };
+    } catch {
+      try {
+        if (Date.now() - statSync(path).mtimeMs >= LOCK_STALE_MS) {
+          rmSync(path, { force: true }); // left behind by a killed run: take it over
+          continue;
+        }
+      } catch {
+        continue; // released between the two calls
+      }
+    }
+    if (Date.now() >= deadline) return null;
+    sleep(200);
   }
 }
 

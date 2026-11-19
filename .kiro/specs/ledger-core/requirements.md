@@ -285,6 +285,7 @@ Known gap that remains: checkpoints cannot detect deletion of entries added afte
 
 ## Handed to later specs
 
+- **Open decision before ussd-engine: who confirms deposits.** Today R9.1 lets a member record their own deposit over USSD, with nothing confirming that the cash was paid. A member could inflate their savings, and so their loan limit (R10.1). Leader approval (R10.6) re-checks the limit, but against the inflated savings. No anomaly rule (R12) flags self-recorded deposits.
 - **ussd-engine:** a registered member's first dial sets their PIN. An unknown phone number gets an `END` screen saying they are not registered and should ask their group leader. Loan requests from USSD create `LOAN_REQUEST` entries, and the member can see the request's status.
 - **dashboard-simulator:** leader actions to register a member, reject a loan request, approve a loan request, and (optional, Requirement 17) save a checkpoint. "Approve" is one button that records the approval and the disbursement together (Requirement 10.17); the domain keeps them as separate steps. Leader sign-in uses Supabase Auth with email and password, no custom auth.
 
