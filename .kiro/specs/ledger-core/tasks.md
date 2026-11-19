@@ -202,7 +202,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
   - Covers: 9.3, 9.9, 11.1, 13.9.
   - Tests: P31 (money-in rule property); examples for each error; matrix rows for `service_role`; new mutants for the rule, `docs/MUTATION-CHECK.md` updated.
 
-- [ ] 19. `Db` adapters, env parsing and entry reads
+- [x] 19. `Db` adapters, env parsing and entry reads
   - Contents:
     - `fromPgPool` (pooler-safe: no named statements, `max: 1`) and `fromPglite`;
     - `src/lib/env.ts` (zod) with `DATABASE_URL`, `READONLY_DATABASE_URL` and `ADMIN_DATABASE_URL`;
