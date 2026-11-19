@@ -15,7 +15,24 @@ import {
   type DomainError,
   type LedgerState,
 } from "./index";
-import { scenarioArb, type Scenario, type Step } from "./testing/arbitraries";
+import { groupArb, idGenerator, memberId, scenarioArb, type Scenario, type Step } from "./testing/arbitraries";
+import type { Member } from "./index";
+
+/** n active members of the scenario group: member 0 is chair, member 1 treasurer, the rest ordinary. */
+function membersFor(n: number): Member[] {
+  return Array.from({ length: Math.max(2, n) }, (_, i) => ({
+    id: memberId(i),
+    groupId: "0b6e4d2c-1a3f-4e5d-8c7b-9a0f1e2d3c4b",
+    displayName: `Member ${i}`,
+    phone: `+2567${String(i).padStart(8, "0")}`,
+    role: i === 0 ? "chair" : i === 1 ? "treasurer" : "member",
+    status: "active",
+    registeredBy: null,
+    registeredAt: "2026-01-03T07:00:00.000Z",
+    authUserId: null,
+  }));
+}
+const idSeq = () => idGenerator("c0000000");
 
 // ---------------------------------------------------------------------------
 // Reference model: the expected outcome of a command, computed from the
@@ -225,6 +242,95 @@ describe("command properties", () => {
           expect(s.entries.find((e) => e.id === targetId)).toBe(origin.result.value.entry);
         }
       }),
+    );
+  });
+
+  it("P12 P14 R4.7 R4.8 R8.1 R8.2 trying to reverse every entry of a ledger follows the reference model and never leaves a negative balance", () => {
+    fc.assert(
+      fc.property(scenarios, (s) => {
+        const leader = s.members[0];
+        if (!leader) return;
+        const ctx: CommandContext = {
+          now: s.state.headOccurredAt ?? "2026-01-03T07:00:00.000Z",
+          newId: () => "ffffffff-0000-4000-8000-0000000000fe",
+          channel: "dashboard",
+          actorMemberId: leader.id,
+        };
+        // The final state, plus the state right after each disbursement, when group cash is lowest.
+        const states = [
+          s.state,
+          ...s.steps.flatMap((st) => (st.result.ok && st.result.value.entry.type === "LOAN_DISBURSEMENT" ? [st.result.value.state] : [])),
+        ];
+        for (const state of states)
+        for (const id of state.entries.keys()) {
+          const cmd: Command = { kind: "reverseEntry", entryId: id, reason: "Audit" };
+          const result = execute(state, cmd, ctx);
+          expect(result.ok ? null : result.error).toEqual(expectedError(state, cmd, ctx));
+          if (!result.ok) continue;
+          const after = result.value.state;
+          expect(after.groupCash).toBeGreaterThanOrEqual(0);
+          for (const v of [...after.savings.values(), ...after.socialFund.values()]) expect(v).toBeGreaterThanOrEqual(0);
+          for (const l of after.loans.values()) if (l.amountOwed !== null) expect(l.amountOwed - l.repaid).toBeGreaterThanOrEqual(0);
+        }
+      }),
+    );
+  });
+
+  it("P14 P17 P21 R8.1 R8.2 R10.8 R10.15 R11.1 R11.2 lending most of the cash: disbursement needs enough cash, repayment is capped at the outstanding, and a reversal that would overdraw the group is rejected", () => {
+    // Built directly so that group cash is often close to zero, which random sequences rarely reach.
+    fc.assert(
+      fc.property(
+        groupArb,
+        fc.array(fc.integer({ min: 5_000, max: 50_000 }), { minLength: 1, maxLength: 4 }),
+        fc.integer({ min: 1, max: 1_000 }),
+        (group, deposits, permille) => {
+          const members = membersFor(deposits.length + 1);
+          const borrower = members[1] as (typeof members)[number]; // treasurer
+          const ids = idSeq();
+          let state = replay(group, members, []);
+          let ms = Date.UTC(2026, 0, 10, 7);
+          const ctx = (actor: string, channel: "ussd" | "dashboard" = "dashboard"): CommandContext => ({
+            now: new Date((ms += 60_000)).toISOString(),
+            newId: ids,
+            channel,
+            actorMemberId: actor,
+          });
+          const run = (cmd: Command, c: CommandContext) => {
+            const r = execute(state, cmd, c);
+            if (r.ok) state = r.value.state;
+            return r;
+          };
+          const depositIds = deposits.map((amount, i) => {
+            const m = members[i + 1] as (typeof members)[number];
+            const r = run({ kind: "deposit", memberId: m.id, amount: Math.max(amount, group.minDeposit) }, ctx(m.id, "ussd"));
+            return r.ok ? r.value.entry.id : "";
+          });
+          const limit = group.loanMultiplier * (state.savings.get(borrower.id) ?? 0);
+          const principal = Math.max(1, Math.floor((limit * permille) / 1_000));
+          const req = run({ kind: "requestLoan", memberId: borrower.id, principal, termMonths: 1 }, ctx(borrower.id, "ussd"));
+          expect(req.ok).toBe(true);
+          if (!req.ok) return;
+          const loanId = req.value.entry.loanId as string;
+          expect(run({ kind: "approveLoan", loanId }, ctx(memberId(0))).ok).toBe(true);
+          const cashBefore = state.groupCash;
+          const disb = run({ kind: "disburseLoan", loanId }, ctx(memberId(0)));
+          expect(disb.ok ? null : disb.error).toEqual(principal > cashBefore ? { code: "INSUFFICIENT_GROUP_CASH" } : null);
+          if (disb.ok) {
+            // R11.1, R11.2: exactly the outstanding is accepted, one more is not.
+            const owed = principal + (disb.value.entry.interestAmount ?? 0);
+            for (const delta of [1, 0]) {
+              const r = execute(state, { kind: "repayLoan", memberId: borrower.id, amount: owed + delta }, ctx(borrower.id, "ussd"));
+              expect(r.ok ? null : r.error).toEqual(delta > 0 ? { code: "EXCEEDS_OUTSTANDING", outstanding: owed } : null);
+            }
+          }
+          for (const id of depositIds) {
+            const amount = state.entries.get(id)?.amount ?? 0;
+            const r = execute(state, { kind: "reverseEntry", entryId: id, reason: "Audit" }, ctx(memberId(0)));
+            expect(r.ok ? null : r.error).toEqual(amount > state.groupCash ? { code: "NEGATIVE_BALANCE", balance: "groupCash" } : null);
+            if (r.ok) expect(r.value.state.groupCash).toBeGreaterThanOrEqual(0);
+          }
+        },
+      ),
     );
   });
 

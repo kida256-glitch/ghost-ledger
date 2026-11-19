@@ -26,10 +26,14 @@ describe("money properties", () => {
   it("P2 R1.3 R1.4 computeInterest equals the BigInt ceil reference", () => {
     fc.assert(
       fc.property(
-        fc.integer({ min: 0, max: MAX_ENTRY_AMOUNT }),
-        fc.integer({ min: 0, max: 3_000 }),
-        fc.integer({ min: 0, max: 12 }),
-        (p, bps, m) => {
+        fc.oneof(
+          fc.tuple(fc.integer({ min: 0, max: MAX_ENTRY_AMOUNT }), fc.integer({ min: 0, max: 3_000 }), fc.integer({ min: 0, max: 12 })),
+          // Products just above and below a multiple of 10,000, where rounding mistakes show.
+          fc
+            .tuple(fc.integer({ min: 0, max: 4_999 }), fc.constantFrom(0, 1, 2, 9_998, 9_999))
+            .map(([k, r]): [number, number, number] => [k * 10_000 + r, 1, 1]),
+        ),
+        ([p, bps, m]) => {
           const product = BigInt(p) * BigInt(bps) * BigInt(m);
           const reference = (product + 9_999n) / 10_000n; // BigInt division truncates
           const actual = computeInterest(p, bps, m);

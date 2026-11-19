@@ -164,7 +164,7 @@ export const groupArb: fc.Arbitrary<Group> = fc
     createdAt: SCENARIO_START,
   }));
 
-/** 3 to 7 members. Members 0 and 1 are leaders; the rest have random roles and statuses. */
+/** 3 to 7 members plus one outsider (last). Members 0 and 1 are leaders; the rest have random roles and statuses. */
 export const membersArb: fc.Arbitrary<Member[]> = fc
   .array(
     fc.record({
@@ -186,8 +186,21 @@ export const membersArb: fc.Arbitrary<Member[]> = fc
         registeredAt: SCENARIO_START,
         authUserId: null,
       }),
-    ),
+    ).concat([OUTSIDER]),
   );
+
+/** A chair of another group: commands naming them must fail (MEMBER_NOT_FOUND, NOT_A_LEADER). */
+export const OUTSIDER: Member = {
+  id: memberId(99),
+  groupId: "1c7f5e3d-2b4a-4f6e-9d8c-0b1a2f3e4d5c",
+  displayName: "Outsider",
+  phone: "+256799999999",
+  role: "chair",
+  status: "active",
+  registeredBy: null,
+  registeredAt: SCENARIO_START,
+  authUserId: null,
+};
 
 /** Amounts biased towards boundaries, with some invalid values. */
 const rawAmountArb = fc.oneof(
@@ -198,10 +211,10 @@ const rawAmountArb = fc.oneof(
 /** An intent picks members, loans and entries by index; it is resolved against the current state. */
 export type Intent =
   | { kind: "deposit" | "contributeSocialFund"; member: number; amount: number; viaDashboard: boolean; leader: number }
-  | { kind: "requestLoan"; member: number; permille: number; termMonths: number; raw: number | null }
+  | { kind: "requestLoan"; member: number; permille: number; termMonths: number; raw: number | null; exact: number | null }
   | { kind: "approveLoan" | "disburseLoan"; loan: number; actor: number }
   | { kind: "rejectLoan"; loan: number; actor: number; reason: string }
-  | { kind: "repayLoan"; member: number; permille: number; raw: number | null }
+  | { kind: "repayLoan"; member: number; permille: number; raw: number | null; exact: number | null }
   | { kind: "reverseEntry"; entry: number; actor: number; reason: string }
   | { kind: "unknownMember"; amount: number };
 
@@ -211,6 +224,8 @@ const recent = fc.nat({ max: 3 });
 /** null most of the time, otherwise a value from `arb`. */
 const rarely = <T>(arb: fc.Arbitrary<T>) =>
   fc.oneof({ weight: 8, arbitrary: fc.constant(null) }, { weight: 1, arbitrary: arb });
+/** null half the time. */
+const sometimes = <T>(arb: fc.Arbitrary<T>) => fc.oneof(fc.constant(null), arb);
 const shortReason = fc.oneof(fc.constantFrom("Wrong amount", "Duplicate", "Ensobi — é💰"), fc.constant(""));
 
 export const intentArb: fc.Arbitrary<Intent> = fc.oneof(
@@ -224,6 +239,8 @@ export const intentArb: fc.Arbitrary<Intent> = fc.oneof(
       permille: fc.integer({ min: 0, max: 1_300 }),
       termMonths: fc.oneof({ weight: 6, arbitrary: fc.integer({ min: 1, max: 3 }) }, { weight: 1, arbitrary: fc.constantFrom(0, 12, 13, 2.5) }),
       raw: rarely(fc.constantFrom(0, -5, 1.5, 50_000_001)),
+      // Sometimes exactly the limit, or one either side of it.
+      exact: sometimes(fc.constantFrom(-1, 0, 1)),
     }),
   },
   { weight: 8, arbitrary: fc.record({ kind: fc.constantFrom("approveLoan" as const, "disburseLoan" as const), loan: recent, actor: pick }) },
@@ -235,6 +252,8 @@ export const intentArb: fc.Arbitrary<Intent> = fc.oneof(
       member: pick,
       permille: fc.integer({ min: 0, max: 1_200 }),
       raw: rarely(fc.constantFrom(0, 1.5, 1)),
+      // Sometimes exactly the outstanding, or one either side of it.
+      exact: sometimes(fc.constantFrom(-1, 0, 1)),
     }),
   },
   { weight: 2, arbitrary: fc.record({ kind: fc.constant("reverseEntry" as const), entry: pick, actor: pick, reason: shortReason }) },
@@ -285,7 +304,8 @@ export function resolveIntent(
     }
     case "requestLoan": {
       const id = member(intent.member);
-      const principal = intent.raw ?? Math.floor((loanLimitOf(state, id) * intent.permille) / 1_000);
+      const limit = loanLimitOf(state, id);
+      const principal = intent.raw ?? (intent.exact !== null ? limit + intent.exact : Math.floor((limit * intent.permille) / 1_000));
       return { command: { kind: "requestLoan", memberId: id, principal, termMonths: intent.termMonths }, ctx: self(id) };
     }
     case "approveLoan":
@@ -302,7 +322,8 @@ export function resolveIntent(
       const id = borrowers.length > 0 && intent.member % 4 !== 0 ? (at(borrowers, intent.member) as Member).id : member(intent.member);
       const loan = activeLoan(state, id);
       const outstanding = loan ? (loanOutstanding(loan) ?? 0) : 1_000;
-      const amount = intent.raw ?? Math.max(1, Math.floor((outstanding * intent.permille) / 1_000));
+      const amount =
+        intent.raw ?? (intent.exact !== null ? outstanding + intent.exact : Math.max(1, Math.floor((outstanding * intent.permille) / 1_000)));
       return { command: { kind: "repayLoan", memberId: id, amount }, ctx: self(id) };
     }
     case "reverseEntry": {

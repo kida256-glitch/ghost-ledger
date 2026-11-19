@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { listOverdueLoans } from "./index";
-import { scenarioArb } from "./testing/arbitraries";
+import { scenarioArb, type Scenario } from "./testing/arbitraries";
 
 /** Brute force from the raw entries: no replay state, no loan helpers. */
 function overdueOracle(entries: readonly import("./index").LedgerEntry[], asOf: string) {
@@ -25,9 +25,19 @@ function overdueOracle(entries: readonly import("./index").LedgerEntry[], asOf: 
 
 describe("loan properties", () => {
   it("P22 R11.6 listOverdueLoans matches a brute-force filter over the entries", () => {
-    const asOf = fc.integer({ min: Date.UTC(2026, 0, 1), max: Date.UTC(2028, 0, 1) }).map((ms) => new Date(ms).toISOString());
+    const random = fc.integer({ min: Date.UTC(2026, 0, 1), max: Date.UTC(2028, 0, 1) }).map((ms) => new Date(ms).toISOString());
+    // Often within a day or two of a real due date, where "due today" vs "overdue" matters.
+    const nearDue = (s: Scenario) => {
+      const due = s.entries.flatMap((e) => (e.type === "LOAN_DISBURSEMENT" ? [e.dueDate] : []));
+      if (due.length === 0) return random;
+      return fc.tuple(fc.constantFrom(...due), fc.integer({ min: -36 * 60, max: 60 * 60 })).map(([d, minutes]) =>
+        // Kampala midnight of the due date is 21:00 UTC the day before.
+        new Date(Date.parse(`${d}T00:00:00.000Z`) - 3 * 3_600_000 + minutes * 60_000).toISOString(),
+      );
+    };
+    const withAsOf = scenarioArb().chain((s) => fc.tuple(fc.constant(s), fc.oneof(random, nearDue(s))));
     fc.assert(
-      fc.property(scenarioArb(), asOf, (s, at) => {
+      fc.property(withAsOf, ([s, at]) => {
         const byId = (a: { loanId: string }, b: { loanId: string }) => (a.loanId < b.loanId ? -1 : 1);
         const actual = listOverdueLoans(s.state, at);
         expect([...actual].sort(byId)).toEqual(overdueOracle(s.entries, at).sort(byId));

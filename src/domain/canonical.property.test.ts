@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { CANONICAL_FIELDS, canonicalize, hashEntry, ledgerEntrySchema, type UnhashedEntry } from "./index";
-import { ledgerEntryArb } from "./testing/arbitraries";
+import { CANONICAL_FIELDS, CHANNELS, canonicalize, hashEntry, ledgerEntrySchema, type UnhashedEntry } from "./index";
+import { ledgerEntryArb, uuidArb } from "./testing/arbitraries";
 
 const ALL_KEYS = [...CANONICAL_FIELDS, "hash"] as const;
 
@@ -33,6 +33,25 @@ describe("canonical properties", () => {
         expect(canonicalize(changed)).not.toBe(canonicalize(e));
         expect(hashEntry(changed)).not.toBe(e.hash);
       }),
+    );
+  });
+
+  it("R4.10 the entry schema accepts an actor/channel pair iff the channel rule allows it", () => {
+    fc.assert(
+      fc.property(
+        ledgerEntryArb,
+        fc.constantFrom(...CHANNELS),
+        fc.constantFrom("subject", "other", "none"),
+        uuidArb,
+        (e, channel, who, other) => {
+          fc.pre(other !== e.subjectMemberId);
+          const actorMemberId = who === "subject" ? e.subjectMemberId : who === "other" ? other : null;
+          const expected =
+            channel === "ussd" ? who === "subject" : channel === "dashboard" ? who !== "none" : who === "none";
+          const changed = { ...e, channel, actorMemberId } as UnhashedEntry;
+          expect(ledgerEntrySchema.safeParse({ ...changed, hash: hashEntry(changed) }).success).toBe(expected);
+        },
+      ),
     );
   });
 

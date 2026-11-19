@@ -96,19 +96,26 @@ describe("anomaly properties", () => {
 
   // -------------------------------------------------------------------------
   // P24: small forged ledgers against a brute-force oracle.
+  // P24: small forged ledgers against a brute-force oracle.
 
-  /** Entries for 2 members at random times within a few days, mixing reversals and deposits. */
-  const smallLedger = fc
-    .array(
-      fc.record({
-        member: fc.integer({ min: 0, max: 1 }),
-        reversal: fc.boolean(),
-        // Minutes from a fixed start, clustered so windows matter.
-        minute: fc.oneof(fc.integer({ min: 0, max: 180 }), fc.integer({ min: 0, max: 60 * 24 * 45 })),
-      }),
-      { maxLength: 9 },
-    )
-    .map((rows) =>
+  // Minutes after 21:00 Kampala on 3 March. Clustered so windows matter: whole hours (so spans
+  // can equal the window exactly), around 05:00–07:00 (end of quiet hours), the night, whole days.
+  const nightMinute = fc.oneof(
+    { weight: 3, arbitrary: fc.integer({ min: 0, max: 12 }).map((h) => h * 60) },
+    { weight: 2, arbitrary: fc.integer({ min: 480, max: 600 }) },
+    { weight: 1, arbitrary: fc.integer({ min: 0, max: 720 }) },
+    { weight: 2, arbitrary: fc.integer({ min: 0, max: 45 }).map((d) => d * 1_440) },
+    { weight: 1, arbitrary: fc.integer({ min: 0, max: 60 * 24 * 45 }) },
+  );
+  // Mostly whole days, so reversal spans can equal the window exactly.
+  const dayMinute = fc.oneof(
+    { weight: 4, arbitrary: fc.integer({ min: 0, max: 10 }).map((d) => d * 1_440) },
+    { weight: 1, arbitrary: fc.integer({ min: 0, max: 60 * 24 * 45 }) },
+  );
+
+  /** Up to 9 sealed entries for 2 members, mixing reversals and deposits. */
+  const ledgerOf = (minute: fc.Arbitrary<number>, reversal: fc.Arbitrary<boolean>) =>
+    fc.array(fc.record({ member: fc.integer({ min: 0, max: 1 }), reversal, minute }), { maxLength: 9 }).map((rows) =>
       sealAll(
         rows.map((r, i): EntryDraft => {
           const subject = memberId(r.member);
@@ -120,15 +127,20 @@ describe("anomaly properties", () => {
         }),
       ),
     );
+  const smallLedger = ledgerOf(nightMinute, fc.boolean());
+  const reversalLedger = ledgerOf(dayMinute, fc.oneof({ weight: 4, arbitrary: fc.constant(true) }, { weight: 1, arbitrary: fc.constant(false) }));
+
 
   const thresholdsArb: fc.Arbitrary<Thresholds> = fc.record({
     reversalCount: fc.integer({ min: 2, max: 4 }),
-    reversalWindowDays: fc.integer({ min: 1, max: 30 }),
+    reversalWindowDays: fc.oneof(fc.integer({ min: 1, max: 30 }), fc.constantFrom(1, 2, 3, 5), fc.constantFrom(1, 2, 3, 5)),
     burstCount: fc.integer({ min: 2, max: 4 }),
-    burstWindowMinutes: fc.integer({ min: 10, max: 120 }),
+    burstWindowMinutes: fc.oneof(fc.integer({ min: 10, max: 120 }), fc.constantFrom(30, 60, 120)),
     quietStartHour: fc.constantFrom(20, 22, 23),
     quietEndHour: fc.constantFrom(5, 6),
   });
+
+  const thresholdsOrDefault = fc.oneof({ weight: 1, arbitrary: fc.constant(undefined) }, { weight: 2, arbitrary: thresholdsArb });
 
   function subsets<T>(xs: readonly T[], k: number): T[][] {
     if (k === 0) return [[]];
@@ -166,7 +178,7 @@ describe("anomaly properties", () => {
 
   it("P24 R12.5 R12.7 R12.8 REPEATED_REVERSALS matches a brute-force oracle", () => {
     fc.assert(
-      fc.property(groupArb, membersArb, smallLedger, fc.option(thresholdsArb, { nil: undefined }), (group, members, entries, th) => {
+      fc.property(groupArb, membersArb, reversalLedger, thresholdsOrDefault, (group, members, entries, th) => {
         const t = th ?? DEFAULT_THRESHOLDS;
         const result = detectAnomalies({ group, members, entries, asOf: AS_OF, thresholds: th });
         expect(clustersOf("REPEATED_REVERSALS", result)).toEqual(oracle(entries, (e) => e.type === "REVERSAL", t.reversalCount, t.reversalWindowDays * 86_400_000));
@@ -176,7 +188,7 @@ describe("anomaly properties", () => {
 
   it("P24 R12.6 R12.7 R12.8 OUT_OF_HOURS_BURST matches a brute-force oracle", () => {
     fc.assert(
-      fc.property(groupArb, membersArb, smallLedger, fc.option(thresholdsArb, { nil: undefined }), (group, members, entries, th) => {
+      fc.property(groupArb, membersArb, smallLedger, thresholdsOrDefault, (group, members, entries, th) => {
         const t = th ?? DEFAULT_THRESHOLDS;
         const quiet = (e: LedgerEntry) => {
           const h = kampalaHour(e.occurredAt);

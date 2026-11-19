@@ -41,7 +41,11 @@ describe("member properties", () => {
   });
 
   it("P4 R3.6 any other string gives INVALID_PHONE", () => {
-    const phoneish = fc.stringMatching(/^[+0-9 -]{0,16}$/);
+    // Near-misses: right shape, but any first digit and 7 to 10 digits.
+    const nearMiss = fc
+      .tuple(fc.constantFrom("+256", "256", "0", "+254", ""), fc.stringMatching(/^[0-9]{7,10}$/), sep)
+      .map(([prefix, digits, s]) => `${prefix}${s}${digits}`);
+    const phoneish = fc.oneof(fc.stringMatching(/^[+0-9 -]{0,16}$/), nearMiss);
     fc.assert(
       fc.property(fc.oneof(fc.string(), phoneish), (raw) => {
         const expected = phoneOracle(raw);
@@ -56,6 +60,8 @@ describe("member properties", () => {
     const gsmChar = fc.constantFrom(...GSM7_BASIC);
     const name = fc.oneof(
       fc.array(gsmChar, { minLength: 0, maxLength: 34 }).map((a) => a.join("")),
+      // Lengths around the 30-character limit.
+      fc.integer({ min: 29, max: 32 }).chain((n) => fc.array(gsmChar, { minLength: n, maxLength: n }).map((a) => a.join(""))),
       fc.string({ unit: "grapheme", maxLength: 34 }),
       fc
         .tuple(fc.array(gsmChar, { minLength: 1, maxLength: 28 }), fc.constantFrom(" ", "  ", "\t", "\n"))
