@@ -127,14 +127,14 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - P21, P22, P10 (re-run with loans).
     - Examples: `EXCEEDS_OUTSTANDING` carrying the outstanding; `NO_ACTIVE_LOAN`; a loan due today is not overdue, and is 1 day overdue tomorrow.
 
-- [ ] 14. Anomalies: approval and limit rules
+- [x] 14. Anomalies: approval and limit rules
   - Contents: `detectAnomalies` scaffolding, `DISBURSEMENT_WITHOUT_APPROVAL`, `LOAN_ABOVE_SAVINGS`, explanation text, deterministic ids and ordering.
   - Covers: 12.1–12.4, 12.9.
   - Tests:
     - P9 (`detectAnomalies`), P23.
     - Examples: one per rule, including the exact explanation sentence.
 
-- [ ] 15. Anomalies: reversal and out-of-hours rules
+- [x] 15. Anomalies: reversal and out-of-hours rules
   - Contents: `REPEATED_REVERSALS`, `OUT_OF_HOURS_BURST`, configurable thresholds, window merging.
   - Covers: 12.5–12.8.
   - Tests:

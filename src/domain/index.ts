@@ -14,6 +14,7 @@ export {
   isLeapYear,
   kampalaDate,
   kampalaDaysBetween,
+  kampalaDateTime,
   kampalaHour,
   toEpochMs,
 } from "./time";
@@ -64,7 +65,7 @@ export {
   validateDisplayName,
 } from "./member";
 export type { Member, MemberRole, MemberStatus, Phone } from "./member";
-export { applyEntry, loanOutstanding, loanStatus, replay, withMember } from "./replay";
+export { applyEntry, loanOutstanding, loanStatus, replay, replayVisiting, withMember } from "./replay";
 export type { EntryRecord, LedgerState, LoanRecord, LoanStage, LoanStatus } from "./replay";
 export {
   activeLoan,
@@ -78,4 +79,6 @@ export {
 export type { GroupSummary, LoanView, MemberSummary, OverdueLoan } from "./loans";
 export { execute, executeAll } from "./commands";
 export type { Command, CommandContext } from "./commands";
+export { ANOMALY_RULES, DEFAULT_THRESHOLDS, detectAnomalies } from "./anomalies";
+export type { Anomaly, AnomalyRule, DetectInput, Thresholds } from "./anomalies";
 export type { ChainHead, VerifyFailureReason, VerifyResult } from "./chain";

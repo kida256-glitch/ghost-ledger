@@ -118,6 +118,13 @@ export function kampalaHour(ts: IsoTimestamp): number {
   return Math.floor((local % DAY_MS) / (60 * 60 * 1000));
 }
 
+/** Kampala local date and time to the minute, e.g. `2026-03-04 02:13`. */
+export function kampalaDateTime(ts: IsoTimestamp): string {
+  const local = toEpochMs(ts) + KAMPALA_OFFSET_MS;
+  const minuteOfDay = Math.floor((local % DAY_MS) / 60_000);
+  return `${kampalaDate(ts)} ${pad(Math.floor(minuteOfDay / 60), 2)}:${pad(minuteOfDay % 60, 2)}`;
+}
+
 /**
  * Adds whole calendar months, clamping the day to the target month's length
  * (31 Jan + 1 month = 28 Feb, or 29 Feb in a leap year). R10.10.

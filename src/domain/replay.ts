@@ -242,6 +242,25 @@ export function replay(group: Group, members: readonly Member[], entries: readon
   return d;
 }
 
+/**
+ * Replays entries in order, calling `visit` with the state just before each
+ * entry is applied. One pass, O(n). The state passed to `visit` is only valid
+ * during the call: don't keep it.
+ */
+export function replayVisiting(
+  group: Group,
+  members: readonly Member[],
+  entries: readonly LedgerEntry[],
+  visit: (before: LedgerState, entry: LedgerEntry) => void,
+): LedgerState {
+  const d = replay(group, members, []) as Draft;
+  for (const e of entries) {
+    visit(d, e);
+    apply(d, e);
+  }
+  return d;
+}
+
 /** Returns a new state with one more entry applied. The input is unchanged. Total. */
 export function applyEntry(state: LedgerState, entry: LedgerEntry): LedgerState {
   const d = draftOf(state);
