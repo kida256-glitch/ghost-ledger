@@ -41,7 +41,7 @@ A task is not complete if any of these fail, or if any test is skipped. Property
     - the Definition of Done passes;
     - **user check**: saving a file in `src/domain` in the IDE shows the related tests running, and saving `tasks.md` shows the reminder.
 
-- [ ] 3. Add a stub `.kiro/settings/mcp.json`
+- [x] 3. Add a stub `.kiro/settings/mcp.json`
   - One `ghost-ledger` server entry with `"disabled": true` and a placeholder command (`npx tsx scripts/mcp-server.ts`). ai-agent-mcp fills it in. No secrets in the file.
   - Covers: the dev MCP config in the project brief.
   - Tests: a JSON validity test, checking that the entry exists, is disabled and contains no `postgres://` URL.

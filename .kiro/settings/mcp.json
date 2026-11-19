@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ghost-ledger": {
+      "command": "npx",
+      "args": ["tsx", "scripts/mcp-server.ts"],
+      "env": {},
+      "disabled": true,
+      "autoApprove": []
+    }
+  }
+}
