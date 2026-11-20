@@ -24,7 +24,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - `replay.ts`, `engine.ts` and the logger type, with in-memory fakes in `src/ussd/testing/`.
   - Tests: the example list in design §10, including the idempotent retry through the real writer on PGlite.
 
-- [ ] 6. Required properties (U15)
+- [x] 6. Required properties (U15)
   - UP1 `U15.1 any input returns a valid CON/END screen and never throws`.
   - UP2 `U15.2 no log record contains the PIN or raw text`.
   - UP3 `U15.3 the menu never offers or issues a command the domain rejects`.
