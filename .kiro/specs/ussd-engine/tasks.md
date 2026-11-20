@@ -20,7 +20,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - Linux build check: `npm ci && npm run build` plus an argon2 smoke script in a `node:24` Docker container.
   - Tests: each rule as an example; the real argon2 hash and verify round trip; a wrong PIN fails; the parameters in code match §11.1.
 
-- [ ] 5. Replay and engine (design §2, §3, §5, §8)
+- [x] 5. Replay and engine (design §2, §3, §5, §8)
   - `replay.ts`, `engine.ts` and the logger type, with in-memory fakes in `src/ussd/testing/`.
   - Tests: the example list in design §10, including the idempotent retry through the real writer on PGlite.
 

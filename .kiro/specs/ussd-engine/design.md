@@ -53,7 +53,7 @@ State machine over tokens. Each state has a screen and a transition function `(t
 
 - `0` pops one state from a stack and `00` resets the stack to `[main]`. Both work in every state. `0` at `main` stays at `main`.
 - **Entry gating (U9.2).** Choosing `1` dry-runs `requestDeposit(minDeposit)`. `PENDING_DEPOSIT_LIMIT` gives `END SAVE_LIMIT`. Choosing `2` dry-runs `requestLoan(1, 1)`. `OPEN_LOAN_EXISTS` gives `END LOAN_OPEN(status…)`, and `EXCEEDS_LOAN_LIMIT` with limit 0 gives `END LOAN_NO_LIMIT`. Any other dry-run error gives `END` with that error's reason. `3`, `4` and `5` go straight to their `END` info screens.
-- **Confirm position (U3.4).** A confirming token that isn't the last token gives `END DIAL_AGAIN`, with no write.
+- **Confirm position (U3.4).** A confirming token that isn't the last token gives `END DIAL_AGAIN`, with no write. The same applies to info screens (Repay, Balance, Group info). A dry-run refusal met during replay is shown wherever it happens, because the state changed since an earlier request of the session and the reason is more useful than "dial again". The PIN-setup retry check (U6.4) runs after the lock check, so a pair of equal tokens can't be used to test PINs while locked.
 - **Amounts** must match `^[1-9][0-9]{0,8}$`. Anything else is a "digits only" error, without a dry run.
 - Interest on the confirm screen comes from `computeInterest` with the group rules, the same function that disbursement uses.
 - Dry runs use `execute(state, command, { actorMemberId: member.id, channel: "ussd", now, newId })` and discard the result.
@@ -139,7 +139,7 @@ returning hits
 type UssdLog = { event: "ussd"; screen: ScreenId; outcome: Outcome; code?: DomainErrorCode | "CHAIN_CONFLICT" };
 ```
 
-`ScreenId`, `Outcome` (`shown`, `wrote`, `idempotent`, `rejected`, `rate_limited`, `locked`, `internal_error`) and the codes are closed lists with no digits in them. The logger takes only `UssdLog`, and a zod schema in the test checks every record. Nothing else in `src/ussd` or the route calls `console`; a source test checks this.
+`ScreenId`, `Outcome` (`shown`, `wrote`, `rejected`, `rate_limited`, `locked`, `pin_failed`, `internal_error`; the engine can't tell a gateway retry from a first write, so there is no `idempotent`) and the codes are closed lists with no digits in them. The logger takes only `UssdLog`, and a zod schema in the test checks every record. Nothing else in `src/ussd` or the route calls `console`; a source test checks this.
 
 ## 9. Route
 
