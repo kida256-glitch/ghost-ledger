@@ -10,7 +10,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - `<ts>_ussd_engine.sql`, the `MATRIX` update, and `src/db/ussd-repo.ts` (`hitRateLimit`, `getCredentials`, `setPinIfUnset`, `recordPinFailure`, `resetPinFailures`, `setLanguage`).
   - Tests (PGlite as `ghost_app`): window rollover and counting, `setPinIfUnset` only once, failure count and lock times at the 5th and 6th failures, language round trip, `ghost_readonly` refused on `ussd_rate_limits`, the matrix with no mismatches.
 
-- [ ] 3. Screens, i18n and GSM-7 (design §7)
+- [x] 3. Screens, i18n and GSM-7 (design §7)
   - `src/ussd/i18n/{en,lg,index}.ts`, `screens.ts` and `finalize`, plus formatting for UGX, dates and rates.
   - Tests: every id in every language with worst-case parameters stays under 182 characters and in GSM-7; English fallback for missing Luganda keys; every Luganda entry carries the draft marker; rate formatting for 1000, 250 and 2999 bps.
 

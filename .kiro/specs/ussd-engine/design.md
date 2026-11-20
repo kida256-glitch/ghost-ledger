@@ -120,8 +120,8 @@ returning hits
 - Luganda covers `NOT_REGISTERED`, `PIN_CREATE`, `PIN_CONFIRM`, `PIN_ENTER`, `PIN_WRONG`, `MAIN`, `BALANCE`, `SAVE_CONFIRM`, `SAVE_DONE`, `LOAN_CONFIRM`, `LOAN_DONE` and `LANG_DONE`.
 - `finalize(screen)` replaces non-GSM-7 characters with `?`. If the screen is still 182 characters or more, it cuts the body and ends it with `..`. This is a guard; the length test makes sure the catalogues never rely on it.
 - **Worst-case parameters for the length test:**
-  - amounts `UGX 999,999,999,999`;
-  - a 60-character group name;
+  - member amounts `UGX 999,999,999`, and group totals `UGX 999,999,999,999`;
+  - a group name clipped to 30 characters on screen (stored names can be 60);
   - a 30-character member name;
   - interest `29.99%`;
   - the date `30/12/2026`;
