@@ -78,7 +78,7 @@ export {
   openLoan,
 } from "./loans";
 export type { GroupSummary, LoanView, MemberSummary, OverdueLoan } from "./loans";
-export { execute, executeAll } from "./commands";
+export { MAX_PENDING_DEPOSITS, execute, executeAll, pendingDeposits } from "./commands";
 export type { Command, CommandContext } from "./commands";
 export { ANOMALY_RULES, DEFAULT_THRESHOLDS, detectAnomalies } from "./anomalies";
 export type { Anomaly, AnomalyRule, DetectInput, Thresholds } from "./anomalies";

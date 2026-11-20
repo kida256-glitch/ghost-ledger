@@ -511,7 +511,7 @@ Ledgers are generated as random `Command` sequences run through `executeAll`, ke
 | R6 Verify | one example per failure reason; 10,000 entries under 2 s | P8, P9 | verify after read-back | – |
 | R7 Balances | hand-computed small ledger | P10–P13 | – | – |
 | R8 Invariants | `NEGATIVE_BALANCE` names the balance | P14, P15 | – | – |
-| R9 Deposits | `BELOW_MIN_DEPOSIT`; `INVALID_DEPOSIT_STATE`; self-confirmation | P16, P28 | – | – |
+| R9 Deposits | `BELOW_MIN_DEPOSIT`; `INVALID_DEPOSIT_STATE`; self-confirmation; `PENDING_DEPOSIT_LIMIT` at 3 pending (R9.10) | P16, P28, P32 | – | – |
 | R10 Loans | each error code; approve+disburse batch | P17–P20 | 10.17 two-entry atomic append; rollback on second failure | – |
 | R11 Repayments | repaid status; `EXCEEDS_OUTSTANDING` includes the amount | P21, P22 | – | – |
 | R12 Anomalies | one example per rule; explanation text | P9, P23, P24, P30 | – | – |

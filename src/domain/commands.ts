@@ -16,6 +16,16 @@ import { applyEntry, loanOutstanding, loanStatus, type LedgerState, type LoanRec
 import { err, ok, type Result } from "./result";
 import { addCalendarMonths, isIsoTimestamp, kampalaDate, type IsoTimestamp } from "./time";
 
+/** R9.10: the most unconfirmed deposit requests a member may have at once. */
+export const MAX_PENDING_DEPOSITS = 3;
+
+/** The member's deposit requests still waiting for a leader (R9.10). */
+export function pendingDeposits(state: LedgerState, memberId: Uuid): number {
+  let n = 0;
+  for (const d of state.deposits.values()) if (d.memberId === memberId && d.status === "pending") n++;
+  return n;
+}
+
 export type Command =
   | { readonly kind: "requestDeposit"; readonly memberId: Uuid; readonly amount: number }
   | { readonly kind: "confirmDeposit"; readonly requestEntryId: Uuid }
@@ -102,6 +112,10 @@ function draftFor(state: LedgerState, cmd: Command, ctx: CommandContext): Result
       if (!amount.ok) return amount;
       if (cmd.kind === "requestDeposit" && amount.value < state.group.minDeposit) {
         return err({ code: "BELOW_MIN_DEPOSIT", minDeposit: state.group.minDeposit });
+      }
+      // R9.10: at most MAX_PENDING_DEPOSITS unconfirmed requests per member, on any channel.
+      if (cmd.kind === "requestDeposit" && pendingDeposits(state, cmd.memberId) >= MAX_PENDING_DEPOSITS) {
+        return err({ code: "PENDING_DEPOSIT_LIMIT", limit: MAX_PENDING_DEPOSITS });
       }
       const type = cmd.kind === "requestDeposit" ? "DEPOSIT_REQUEST" : "SOCIAL_FUND_CONTRIBUTION";
       return ok({ ...base, id: ctx.newId(), type, subjectMemberId: cmd.memberId, amount: amount.value });

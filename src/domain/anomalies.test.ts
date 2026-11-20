@@ -293,3 +293,14 @@ describe("task 15: reversal and out-of-hours rules", () => {
     expect(detect(late, undefined, { burstCount: 4, quietStartHour: 20 })).toEqual([]);
   });
 });
+
+describe("regression: P23 counterexample (seed 1422371221)", () => {
+  it("a forged disbursement dated 2030-07-15 is flagged when asOf is after it, and ignored when asOf is before it", () => {
+    const l = new Ledger();
+    l.deposit(ALICE, 5_000);
+    const entries = [...l.entries];
+    const forged = forge(entries, forgedDisbursement(CHAIR.id, 18, "2030-07-15T19:45:00.000Z"));
+    expect(detect(entries, "2099-01-01T00:00:00.000Z").filter((a) => a.rule === "DISBURSEMENT_WITHOUT_APPROVAL").map((a) => a.entryIds)).toEqual([[forged.id]]);
+    expect(detect(entries, "2030-01-01T00:00:00.000Z")).toEqual([]);
+  });
+});

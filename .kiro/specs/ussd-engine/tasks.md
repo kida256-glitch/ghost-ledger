@@ -2,7 +2,7 @@
 
 Every task ends with the Definition of Done (`npm run typecheck && npm run lint && npm test && npm run build`), a commit, and an update to `KIRO_USAGE.md`. Property titles name the requirement ids they cover. There are no mutation checks for this spec.
 
-- [ ] 1. Pending-deposit cap in ledger-core (design §12.1)
+- [x] 1. Pending-deposit cap in ledger-core (design §12.1)
   - Spec-first: add ledger-core R9.10, the `PENDING_DEPOSIT_LIMIT` error, the design note and the traceability entry. Then the domain change in `requestDeposit`.
   - Tests: property `R9.10 a member never has more than 3 pending deposit requests`, and examples at 2→3 (accepted) and 3→4 (rejected), and after a confirmation frees a slot.
 

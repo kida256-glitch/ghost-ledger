@@ -62,6 +62,9 @@ function expectedError(before: LedgerState, cmd: Command, ctx: CommandContext): 
       }
       if (!validAmount(cmd.amount)) return { code: "INVALID_AMOUNT" };
       if (cmd.kind === "requestDeposit" && cmd.amount < g.minDeposit) return { code: "BELOW_MIN_DEPOSIT", minDeposit: g.minDeposit };
+      if (cmd.kind === "requestDeposit" && [...before.deposits.values()].filter((d) => d.memberId === cmd.memberId && d.status === "pending").length >= 3) {
+        return { code: "PENDING_DEPOSIT_LIMIT", limit: 3 };
+      }
       return null;
     case "confirmDeposit": {
       const request = before.entries.get(cmd.requestEntryId);
@@ -561,6 +564,42 @@ describe("command properties", () => {
           const state = st.result.ok ? st.result.value.state : st.before;
           for (const l of state.loans.values()) if (l.amountOwed !== null) expect(l.repaid).toBeLessThanOrEqual(l.amountOwed);
         }
+      }),
+    );
+  });
+});
+
+describe("R9.10 pending deposit cap", () => {
+  it("P32 R9.10 a member never has more than 3 pending deposit requests, and a 4th request is rejected until one is confirmed", () => {
+    fc.assert(
+      fc.property(scenarioArb(), fc.array(fc.integer({ min: 2_000, max: 50_000 }), { minLength: 4, maxLength: 8 }), (s: Scenario, amounts) => {
+        // 1. Along every random scenario, no state ever holds 4 pending requests for one member.
+        const pendingMax = (st: LedgerState) => {
+          const counts = new Map<string, number>();
+          for (const d of st.deposits.values()) if (d.status === "pending") counts.set(d.memberId, (counts.get(d.memberId) ?? 0) + 1);
+          return Math.max(0, ...counts.values());
+        };
+        for (const step of s.steps) {
+          expect(pendingMax(step.before)).toBeLessThanOrEqual(3);
+          if (step.result.ok) expect(pendingMax(step.result.value.state)).toBeLessThanOrEqual(3);
+        }
+        // 2. From the last state, one member files requests in a row: exactly enough to reach 3 are accepted.
+        const last = s.steps.at(-1);
+        let state = last ? (last.result.ok ? last.result.value.state : last.before) : replay(s.group, s.members, []);
+        const member = s.members.find((m) => m.groupId === s.group.id && m.status === "active");
+        if (!member) return;
+        const newId = idSeq();
+        const pendingOf = () => [...state.deposits.values()].filter((d) => d.memberId === member.id && d.status === "pending").length;
+        let now = state.headOccurredAt ?? "2026-01-03T07:00:00.000Z";
+        for (const amount of amounts) {
+          now = new Date(Date.parse(now) + 60_000).toISOString();
+          const before = pendingOf();
+          const r = execute(state, { kind: "requestDeposit", memberId: member.id, amount: Math.max(amount, s.group.minDeposit) }, { now, newId, channel: "ussd", actorMemberId: member.id });
+          if (before >= 3) expect(r).toEqual({ ok: false, error: { code: "PENDING_DEPOSIT_LIMIT", limit: 3 } });
+          else expect(r.ok).toBe(true);
+          if (r.ok) state = r.value.state;
+        }
+        expect(pendingOf()).toBe(3);
       }),
     );
   });

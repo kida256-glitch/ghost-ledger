@@ -162,6 +162,7 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 7. IF a confirmation targets a deposit request that does not exist or is not `pending`, THEN the domain SHALL reject it with error `INVALID_DEPOSIT_STATE`.
 8. Loan limits (R10.1) and all savings totals SHALL count confirmed deposits only.
 9. Money-in rule: every entry that brings cash in (`DEPOSIT_CONFIRMATION`, `LOAN_REPAYMENT`, `SOCIAL_FUND_CONTRIBUTION`) SHALL be recorded by a leader of the group who is not the member it credits. IF the actor is not a leader, THEN the domain SHALL reject the command with error `NOT_A_LEADER`; IF the actor is that member, THEN with error `SELF_APPROVAL`. Members can't self-record cash in over any channel.
+10. IF a member already has 3 `pending` deposit requests, THEN the domain SHALL reject a new deposit request for that member, on any channel, with error `PENDING_DEPOSIT_LIMIT` (added by the ussd-engine spec).
 
 ### Requirement 10: Loan requests, approval and disbursement
 

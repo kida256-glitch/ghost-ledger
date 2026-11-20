@@ -13,7 +13,8 @@ import {
 import { SCENARIO_GROUP_ID, groupArb, membersArb, memberId, scenarioArb, sealAll, type Scenario } from "./testing/arbitraries";
 
 const NONE = { amount: null, loanId: null, termMonths: null, interestAmount: null, dueDate: null, reversesEntryId: null, confirmsEntryId: null, reason: null } as const;
-const AS_OF = "2030-01-01T00:00:00.000Z";
+// After any scenario date: scenarios can run 50+ steps up to 30 days apart, which reached 2030-07 once (seed 1422371221).
+const AS_OF = "2099-01-01T00:00:00.000Z";
 const forgedId = (n: number) => `fa000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
 
 function append(s: Scenario, drafts: readonly Omit<EntryDraft, "groupId">[]): LedgerEntry[] {

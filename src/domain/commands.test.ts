@@ -450,3 +450,19 @@ describe("task 13: repayments", () => {
     expect(l.by(CHAIR, { kind: "repayLoan", memberId: ALICE.id, amount: 1 })).toEqual(error({ code: "NO_ACTIVE_LOAN" }));
   });
 });
+
+describe("R9.10 pending deposit cap (examples)", () => {
+  it("the 3rd request is accepted, the 4th rejected on USSD and on the dashboard; a confirmation frees a slot", () => {
+    const l = new Ledger();
+    l.requestDeposit(ALICE, 2_000);
+    const second = l.requestDeposit(ALICE, 3_000);
+    expect(l.self(ALICE, { kind: "requestDeposit", memberId: ALICE.id, amount: 4_000 }).ok).toBe(true);
+    l.must(l.self(BOB, { kind: "requestDeposit", memberId: BOB.id, amount: 2_000 })); // other members are counted separately
+    const fourth = { kind: "requestDeposit", memberId: ALICE.id, amount: 5_000 } as const;
+    expect(l.self(ALICE, fourth)).toEqual(error({ code: "PENDING_DEPOSIT_LIMIT", limit: 3 }));
+    expect(l.by(CHAIR, fourth)).toEqual(error({ code: "PENDING_DEPOSIT_LIMIT", limit: 3 }));
+    l.must(l.by(CHAIR, { kind: "confirmDeposit", requestEntryId: second.id }));
+    expect(l.self(ALICE, fourth).ok).toBe(true);
+    expect(l.self(ALICE, fourth)).toEqual(error({ code: "PENDING_DEPOSIT_LIMIT", limit: 3 }));
+  });
+});
