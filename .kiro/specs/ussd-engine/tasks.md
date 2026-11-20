@@ -35,7 +35,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - Tests: form parsing, the U1.2 limits, the 200 `text/plain` response, and the generic `END` on a dependency error.
   - Done when: the Definition of Done passes, and a manual run against local Supabase completes PIN setup, Save and Balance for a seeded member.
 
-- [ ] 8. Demo PINs and `demo:unlock` (U17, design §11)
+- [x] 8. Demo PINs and `demo:unlock` (U17, design §11)
   - `src/seed/demo-pins.ts`, and the seed sets the hashes; `scripts/demo-unlock.ts`; DEMO.md commands. Add the README threat-model note.
   - Tests: every demo PIN passes `checkNewPin` for its member; exactly one seeded member has no PIN after the seed; after the seed, the demo PIN logs in through the engine on PGlite; `demo:unlock` clears a lockout and the rate-limit rows for that group only, and refuses an unknown group.
 

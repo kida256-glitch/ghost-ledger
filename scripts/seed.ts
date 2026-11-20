@@ -19,6 +19,8 @@ import { kampalaDate } from "../src/domain";
 import { createPool, fromPgPool, type Db } from "../src/db/db";
 import { INSERT_ENTRY_SQL, INSERT_GROUP_SQL, INSERT_MEMBER_SQL, entryParams, groupParams, memberParams } from "../src/db/rows";
 import { SEED_GROUP_CODE, buildSeed } from "../src/seed/build-seed";
+import { DEMO_PINS } from "../src/seed/demo-pins";
+import { argon2PinHasher, type PinHasher } from "../src/ussd/pin";
 
 /** The Supabase Auth admin calls the seed needs; tests use a fake (design §9). */
 export interface AuthAdmin {
@@ -73,8 +75,17 @@ export type SeedOutcome = { ok: true; entries: number; members: number } | { ok:
  * (R14.9). Auth users are created first; if the insert then fails, they are
  * deleted again.
  */
-export async function runSeed(opts: { db: Db; auth: AuthAdmin; anchor: string; password: string; log: (line: string) => void }): Promise<SeedOutcome> {
+export async function runSeed(opts: {
+  db: Db;
+  auth: AuthAdmin;
+  anchor: string;
+  password: string;
+  log: (line: string) => void;
+  /** Hashes the demo PINs (ussd-engine U17.1); argon2id unless a test passes a fake. */
+  pins?: PinHasher;
+}): Promise<SeedOutcome> {
   const { db, auth, anchor, password, log } = opts;
+  const pins = opts.pins ?? argon2PinHasher;
   const existing = await db.query("select 1 from groups where code = $1", [SEED_GROUP_CODE]);
   if (existing.rows.length > 0) return { ok: false, reason: `group ${SEED_GROUP_CODE} already exists; nothing changed` };
 
@@ -90,16 +101,22 @@ export async function runSeed(opts: { db: Db; auth: AuthAdmin; anchor: string; p
       links.set(member.id, user.id);
       log(`created demo login ${account.email} for the ${account.role}`);
     }
+    // Hash before the transaction, so it stays short.
+    const hashes = new Map<string, string>();
+    for (const m of seed.members) {
+      const pin = DEMO_PINS[m.id];
+      if (pin !== undefined) hashes.set(m.id, await pins.hash(pin));
+    }
     await db.transaction(async (tx) => {
       await tx.query(INSERT_GROUP_SQL, groupParams(seed.group));
       for (const m of seed.members) {
         await tx.query(INSERT_MEMBER_SQL, memberParams({ ...m, authUserId: links.get(m.id) ?? null }));
-        await tx.query("insert into member_credentials (member_id) values ($1)", [m.id]);
+        await tx.query("insert into member_credentials (member_id, pin_hash) values ($1, $2)", [m.id, hashes.get(m.id) ?? null]);
       }
       // In chronological (seq) order, so the chain-link trigger accepts every link.
       for (const e of seed.entries) await tx.query(INSERT_ENTRY_SQL, entryParams(e));
     });
-    log(`seeded ${SEED_GROUP_CODE}: ${seed.members.length} members, ${seed.entries.length} entries, anchor ${anchor}`);
+    log(`seeded ${SEED_GROUP_CODE}: ${seed.members.length} members, ${seed.entries.length} entries, anchor ${anchor}, ${hashes.size} demo PINs`);
     return { ok: true, entries: seed.entries.length, members: seed.members.length };
   } catch (e) {
     for (const id of created) await auth.deleteUser(id).catch(() => undefined);

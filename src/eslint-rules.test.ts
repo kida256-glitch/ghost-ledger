@@ -10,7 +10,8 @@ const eslint = new ESLint({ cwd: process.cwd() });
 // several seconds on a cold start. Pay that once, outside the per-test timeout.
 beforeAll(async () => {
   await eslint.lintText("export {};\n", { filePath: "src/domain/warmup.ts" });
-}, 30_000);
+  // 90 s: with 50+ test files (many running PGlite) in parallel, the cold start took over 30 s once.
+}, 90_000);
 
 async function lint(code: string, filePath: string) {
   const [result] = await eslint.lintText(code, { filePath });

@@ -120,6 +120,37 @@ Dial "" "demo4" "+256700999999"  # END This number is not registered ...
 
 Each `text` is every choice so far joined by `*`, with the PIN first. A new `session` value starts a new session. The server log prints one line per request with the screen and outcome only, never the text, the PIN or the phone number.
 
+### Demo members and PINs
+
+The group is fictional. The seed sets these PINs (`src/seed/demo-pins.ts`); the simulator page will show the same list.
+
+| Member | Role | Phone | PIN |
+|--------|------|-------|-----|
+| Nakato Sarah | chair | +256701200001 | 2580 |
+| Ssempala Joseph | treasurer | +256701200002 | 1357 |
+| Namubiru Grace | secretary | +256701200003 | 2468 |
+| Okello David | member | +256701200004 | 3691 |
+| Nansubuga Ruth | member | +256701200005 | 4826 |
+| Mugisha Peter | member | +256701200006 | 5937 |
+| Achieng Mary | member | +256701200007 | 6148 |
+| Kato Ivan | member | +256701200008 | 7259 |
+| Nalwoga Esther | member | +256701200009 | 8360 |
+| Tumusiime Paul | member | +256701200010 | 9471 |
+| Birungi Joan | member | +256701200011 | 1593 |
+| Waiswa Henry | member | +256701200012 | none: the first dial sets it |
+
+### Unlock the demo accounts
+
+If a demo PIN gets locked (5 wrong tries) or a phone hits the rate limit (30 requests in 5 minutes):
+
+```powershell
+$env:ADMIN_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:56322/postgres"
+npm run demo:unlock
+# Hosted: use the hosted ADMIN_DATABASE_URL and also set DATABASE_CA_CERT (see "Hosted deployment").
+```
+
+It prints only counts, for example `demo:unlock: reset 1 locked or failing PIN(s), cleared 2 rate-limit row(s)`. It touches only the TUBEERA group (`-- --group CODE` for another one), and changes no ledger entries.
+
 ## 7. Stop local Supabase
 
 ```powershell
