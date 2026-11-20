@@ -192,7 +192,14 @@ There is no mutation check for this spec.
 
 ### 11.1 Measured
 
-_Filled in by task 4._
+`npm run ussd:argon2-timing` reports the median and worst of 20 verifies.
+
+| Where | m = 19456 KiB, t = 2, p = 1 (in use) | m = 46080, t = 1 | m = 65536, t = 3 |
+|-------|------------------|------------------|------------------|
+| Windows laptop, Intel i7-8650U, Node 24.18 | median 30 ms, worst 48 ms | 47 ms / 71 ms | 178 ms / 230 ms |
+| Same laptop, `node:24` Linux container (`scripts/linux-build-check.sh`) | median 31 ms, worst 102 ms | 44 ms / 53 ms | 142 ms / 363 ms |
+
+Decision: keep the OWASP minimum. Its median is about 30 ms, roughly a third of the 100 ms budget, which leaves room for Vercel's slower CPUs. `hosted:check` measures the full request on the deployment (U18.3). In the same container, `npm ci` installed `@node-rs/argon2-linux-x64-gnu` from the lockfile, `next build` passed, and the native module loaded and hashed (U18.2).
 
 ## 12. Decisions
 

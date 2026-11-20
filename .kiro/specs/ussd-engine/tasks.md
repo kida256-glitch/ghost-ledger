@@ -14,7 +14,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - `src/ussd/i18n/{en,lg,index}.ts`, `screens.ts` and `finalize`, plus formatting for UGX, dates and rates.
   - Tests: every id in every language with worst-case parameters stays under 182 characters and in GSM-7; English fallback for missing Luganda keys; every Luganda entry carries the draft marker; rate formatting for 1000, 250 and 2999 bps.
 
-- [ ] 4. PIN module (design §4)
+- [x] 4. PIN module (design §4)
   - `checkNewPin`, the `PinHasher` interface, the argon2id implementation, and adding `@node-rs/argon2`.
   - Calibrate the argon2id cost (design §11): a timing script, with the result recorded in design §11.1; one verify under about 100 ms.
   - Linux build check: `npm ci && npm run build` plus an argon2 smoke script in a `node:24` Docker container.

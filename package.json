@@ -23,11 +23,13 @@
     "db:roles-login": "tsx scripts/db-roles-login.ts",
     "db:deploy": "tsx scripts/deploy-db.ts",
     "hosted:check": "tsx scripts/hosted-check.ts",
+    "ussd:argon2-timing": "tsx scripts/argon2-timing.ts",
     "db:seed": "tsx scripts/seed.ts",
     "demo:tamper": "tsx scripts/demo-tamper.ts",
     "demo:restore": "tsx scripts/demo-restore.ts"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.2.2",
     "@supabase/supabase-js": "^2.119.2",
     "next": "^15.5.29",
     "pg": "^8.23.1",
