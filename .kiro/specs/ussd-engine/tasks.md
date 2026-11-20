@@ -6,7 +6,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - Spec-first: add ledger-core R9.10, the `PENDING_DEPOSIT_LIMIT` error, the design note and the traceability entry. Then the domain change in `requestDeposit`.
   - Tests: property `R9.10 a member never has more than 3 pending deposit requests`, and examples at 2→3 (accepted) and 3→4 (rejected), and after a confirmation frees a slot.
 
-- [ ] 2. Migration and repos (design §6)
+- [x] 2. Migration and repos (design §6)
   - `<ts>_ussd_engine.sql`, the `MATRIX` update, and `src/db/ussd-repo.ts` (`hitRateLimit`, `getCredentials`, `setPinIfUnset`, `recordPinFailure`, `resetPinFailures`, `setLanguage`).
   - Tests (PGlite as `ghost_app`): window rollover and counting, `setPinIfUnset` only once, failure count and lock times at the 5th and 6th failures, language round trip, `ghost_readonly` refused on `ussd_rate_limits`, the matrix with no mismatches.
 

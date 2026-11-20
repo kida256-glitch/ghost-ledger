@@ -22,7 +22,13 @@ export const MATRIX: Record<string, Record<string, Expected>> = {
   groups: { ghost_app: { table: ["SELECT"] }, ghost_readonly: { table: ["SELECT"] }, ...API_ROLES },
   members: { ghost_app: { table: ["SELECT", "INSERT"] }, ghost_readonly: { table: ["SELECT"] }, ...API_ROLES },
   member_credentials: {
-    ghost_app: { table: ["SELECT"], insertColumns: ["member_id"], updateColumns: ["pin_hash", "failed_attempts", "locked_until"] },
+    ghost_app: { table: ["SELECT"], insertColumns: ["member_id"], updateColumns: ["pin_hash", "failed_attempts", "locked_until", "ussd_language"] },
+    ghost_readonly: NONE,
+    ...API_ROLES,
+  },
+  // ussd-engine design §6: updated in place, never read by the read-only role.
+  ussd_rate_limits: {
+    ghost_app: { table: ["SELECT", "INSERT"], updateColumns: ["window_start", "hits"] },
     ghost_readonly: NONE,
     ...API_ROLES,
   },

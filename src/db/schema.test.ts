@@ -29,11 +29,11 @@ function sampleChain() {
 }
 
 describe("task 16: schema (R13.1, R13.4, R3.8, R7.8)", () => {
-  it("creates the four tables and nothing else in public", async () => {
+  it("creates the four ledger-core tables plus ussd_rate_limits (ussd-engine) and nothing else in public", async () => {
     const r = await db.query<{ table_name: string }>(
       "select table_name from information_schema.tables where table_schema = 'public' order by table_name",
     );
-    expect(r.rows.map((x) => x.table_name)).toEqual(["groups", "ledger_entries", "member_credentials", "members"]);
+    expect(r.rows.map((x) => x.table_name)).toEqual(["groups", "ledger_entries", "member_credentials", "members", "ussd_rate_limits"]);
   });
 
   it("has the uniques: (group_id, seq), (group_id, idempotency_key) where present, phone", async () => {
