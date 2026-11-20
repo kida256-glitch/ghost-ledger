@@ -28,6 +28,13 @@ Every non-local connection uses TLS that verifies the Supabase CA and hostname, 
 
 > **The service-role key lives only in the shell that runs `db:seed`.** Set it with `$env:SUPABASE_SERVICE_ROLE_KEY = "..."` (see [DEMO.md](DEMO.md)), never in `.env`/`.env.local`, never in Vercel, never in git. It bypasses Row Level Security and every grant. The app's `appEnv()` refuses to start if the key is set. The seed script doesn't call `appEnv()`, so that check doesn't block it; instead the seed refuses if any local `.env*` file assigns the key (Next.js would load it into the app) or if it detects Vercel (`VERCEL`) or `NODE_ENV=production`.
 
+## Security notes (threat model)
+
+- **The USSD endpoint has no gateway authentication.** `POST /api/ussd` accepts any `phoneNumber`, so anyone who can reach it (including through the simulator) can claim to be any member. The member's PIN is the only protection: argon2id-hashed, checked on every request, locked for 30 minutes after 5 wrong tries, and every phone number is rate-limited to 30 requests per 5 minutes. A production deployment would need a gateway IP allowlist or signed requests from the USSD aggregator, so that `phoneNumber` can be trusted.
+- **First dial sets the PIN.** Whoever dials first for a newly registered number chooses its PIN. With a real gateway the network vouches for the number; with the open endpoint it does not. PIN reset is not built yet.
+- **Logs** contain only fixed words (screen and outcome), never `text`, PINs, hashes, phone numbers or session ids.
+- **USSD can only file requests.** It can create deposit requests and loan requests for the member dialling, nothing else. Leaders confirm deposits and approve loans on the dashboard.
+
 ## Running tests
 
 These commands become available as the ledger-core tasks are implemented.

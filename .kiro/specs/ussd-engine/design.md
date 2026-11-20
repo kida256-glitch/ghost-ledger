@@ -199,7 +199,7 @@ There is no mutation check for this spec.
 | Windows laptop, Intel i7-8650U, Node 24.18 | median 30 ms, worst 48 ms | 47 ms / 71 ms | 178 ms / 230 ms |
 | Same laptop, `node:24` Linux container (`scripts/linux-build-check.sh`) | median 31 ms, worst 102 ms | 44 ms / 53 ms | 142 ms / 363 ms |
 
-Decision: keep the OWASP minimum. Its median is about 30 ms, roughly a third of the 100 ms budget, which leaves room for Vercel's slower CPUs. `hosted:check` measures the full request on the deployment (U18.3). In the same container, `npm ci` installed `@node-rs/argon2-linux-x64-gnu` from the lockfile, `next build` passed, and the native module loaded and hashed (U18.2).
+Decision: keep the OWASP minimum. Its median is about 30 ms, roughly a third of the 100 ms budget, which leaves room for Vercel's slower CPUs. `hosted:check` measures the full request on the deployment (U18.3). With the route in place (task 7), the same check found `@node-rs/argon2-linux-x64-gnu` in the `/api/ussd` function trace (`.next/server/app/api/ussd/route.js.nft.json`), which is the file list Vercel packages. In the same container, `npm ci` installed `@node-rs/argon2-linux-x64-gnu` from the lockfile, `next build` passed, and the native module loaded and hashed (U18.2).
 
 ## 12. Decisions
 

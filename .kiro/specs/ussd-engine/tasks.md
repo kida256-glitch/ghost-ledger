@@ -30,7 +30,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - UP3 `U15.3 the menu never offers or issues a command the domain rejects`.
   - A source test checks that no `console.` call appears in `src/ussd` or `src/app/api/ussd`.
 
-- [ ] 7. Route and wiring (design §9)
+- [x] 7. Route and wiring (design §9)
   - `src/app/api/ussd/route.ts`, the README security note (the gateway isn't authenticated; the PIN is the only protection), and DEMO.md PowerShell commands to `curl` the endpoint locally (first dial, PIN setup, Balance).
   - Tests: form parsing, the U1.2 limits, the 200 `text/plain` response, and the generic `END` on a dependency error.
   - Done when: the Definition of Done passes, and a manual run against local Supabase completes PIN setup, Save and Balance for a seeded member.

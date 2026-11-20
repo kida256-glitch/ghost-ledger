@@ -90,7 +90,37 @@ npx next start -p 3000
 # In a browser: http://localhost:3000/api/health  ->  "status":"verified", "dbRole":"ghost_readonly"
 ```
 
-## 6. Stop local Supabase
+## 6. USSD endpoint, locally
+
+After sections 1, 2 and 5 (roles with login passwords), with the app running as `ghost_app`:
+
+```powershell
+$env:DATABASE_URL = "postgresql://ghost_app:local-app-password-0001@127.0.0.1:56322/postgres"
+$env:READONLY_DATABASE_URL = "postgresql://ghost_readonly:local-ro-password-00001@127.0.0.1:56322/postgres"
+npm run build
+npx next start -p 3000
+```
+
+In a second PowerShell window, this function sends one gateway request the way Africa's Talking does (form-encoded). `curl.exe` is the real curl that ships with Windows, not the PowerShell alias:
+
+```powershell
+function Dial([string]$text, [string]$session = "demo1", [string]$phone = "+256701200012") {
+  curl.exe -s http://localhost:3000/api/ussd --data-urlencode "sessionId=$session" --data-urlencode "serviceCode=*384*123#" --data-urlencode "phoneNumber=$phone" --data-urlencode "text=$text"
+}
+
+Dial ""                       # CON Welcome Waiswa Henry. Create a 4-digit PIN:
+Dial "7391"                   # CON Enter the same PIN again:
+Dial "7391*7391"              # END PIN saved. Please dial again ...
+Dial "7391" "demo2"           # CON 1 Save / 2 Request loan / ...
+Dial "7391*1*5000*1" "demo2"  # END Request sent: UGX 5,000. A leader will confirm it.
+Dial "7391*1*5000*1" "demo2"  # the same again: a gateway retry, nothing new is recorded
+Dial "7391*4" "demo3"         # END Savings ... Waiting UGX 5,000 (1) ...
+Dial "" "demo4" "+256700999999"  # END This number is not registered ...
+```
+
+Each `text` is every choice so far joined by `*`, with the PIN first. A new `session` value starts a new session. The server log prints one line per request with the screen and outcome only, never the text, the PIN or the phone number.
+
+## 7. Stop local Supabase
 
 ```powershell
 npx supabase stop
