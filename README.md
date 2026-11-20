@@ -28,6 +28,12 @@ Every non-local connection uses TLS that verifies the Supabase CA and hostname, 
 
 > **The service-role key lives only in the shell that runs `db:seed`.** Set it with `$env:SUPABASE_SERVICE_ROLE_KEY = "..."` (see [DEMO.md](DEMO.md)), never in `.env`/`.env.local`, never in Vercel, never in git. It bypasses Row Level Security and every grant. The app's `appEnv()` refuses to start if the key is set. The seed script doesn't call `appEnv()`, so that check doesn't block it; instead the seed refuses if any local `.env*` file assigns the key (Next.js would load it into the app) or if it detects Vercel (`VERCEL`) or `NODE_ENV=production`.
 
+## Keep-alive
+
+Supabase pauses free-tier projects after 7 days without activity, and a paused project would break the live demo. `vercel.json` therefore has a Vercel cron job that calls `GET /api/health` every day at 06:00 UTC (09:00 Kampala). The health route makes one read-only query as `ghost_readonly` through the transaction pooler, which counts as activity. It needs no secret and changes nothing. The Hobby plan allows one cron run per day, which is enough.
+
+The job only has to run until the Kiroween judging period ends on **29 January 2027**. After that, remove the `crons` entry from `vercel.json`. You can check that it runs in the Vercel dashboard under *Settings* → *Cron Jobs*, or in the function logs for `/api/health`.
+
 ## Security notes (threat model)
 
 - **The USSD endpoint has no gateway authentication.** `POST /api/ussd` accepts any `phoneNumber`, so anyone who can reach it (including through the simulator) can claim to be any member. The member's PIN is the only protection: argon2id-hashed, checked on every request, locked for 30 minutes after 5 wrong tries, and every phone number is rate-limited to 30 requests per 5 minutes. A production deployment would need a gateway IP allowlist or signed requests from the USSD aggregator, so that `phoneNumber` can be trusted.

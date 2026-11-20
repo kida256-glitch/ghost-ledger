@@ -39,6 +39,6 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - `src/seed/demo-pins.ts`, and the seed sets the hashes; `scripts/demo-unlock.ts`; DEMO.md commands. Add the README threat-model note.
   - Tests: every demo PIN passes `checkNewPin` for its member; exactly one seeded member has no PIN after the seed; after the seed, the demo PIN logs in through the engine on PGlite; `demo:unlock` clears a lockout and the rate-limit rows for that group only, and refuses an unknown group.
 
-- [ ] 9. Keep-alive and the timed USSD request (U16, U18.3)
+- [x] 9. Keep-alive and the timed USSD request (U16, U18.3)
   - Add the cron to `vercel.json`, plus a README "Keep-alive" section. Add the timed USSD check to `hosted:check`.
   - Tests: `vercel.json` has the daily `/api/health` cron and still has `regions: ["fra1"]`; `hosted:check` PASSes a fast Balance screen and FAILs a slow one (2000 ms or more), a non-`END` reply and an HTTP error, using a fake `fetch` and a fake clock.

@@ -7,6 +7,7 @@
 //   4. 10 concurrent appends through the pooler, from 10 separate max-1 pools,
 //      give a contiguous, verified chain in a separate check group
 //   5. GET /api/health is still "verified"
+//   6. a full USSD request (demo PIN + Balance), cold then warm, warm under 2 s (U18.3)
 // The check group's rows are permanent (the ledger is append-only); they never
 // touch the demo group.
 import { randomBytes, randomUUID } from "node:crypto";
@@ -15,11 +16,14 @@ import { createPool, fromPgPool, type Db } from "../src/db/db";
 import { createLedgerWriter } from "../src/db/ledger-writer";
 import { INSERT_GROUP_SQL, INSERT_MEMBER_SQL, groupParams, listEntries, memberParams } from "../src/db/rows";
 import { checkPrivileges } from "../src/db/testing/privileges";
-import { SEED_GROUP_CODE } from "../src/seed/build-seed";
+import { SEED_GROUP_CODE, buildSeed } from "../src/seed/build-seed";
+import { DEMO_PINS } from "../src/seed/demo-pins";
 
 export const EXPECTED_REGION = "fra1";
 export const POOLER_PORT = "6543";
 export const PARALLEL_WRITERS = 10;
+/** U18.3: the warm USSD request must take less than this. */
+export const USSD_WARM_LIMIT_MS = 2_000;
 
 export interface CheckResult {
   name: string;
@@ -38,6 +42,41 @@ export interface HostedDeps {
   /** PARALLEL_WRITERS independent ghost_app connections through the pooler. */
   appDbs: readonly Db[];
   clock?: () => Date;
+  /** POSTs a form to the deployment; returns status and body text. */
+  postForm: (url: string, fields: Record<string, string>) => Promise<{ status: number; body: string }>;
+  /** Milliseconds, for timing (performance.now in production, a fake in tests). */
+  timer: () => number;
+}
+
+/** The first demo member (the chair) and their PIN: a known, unlocked login on the seeded group. */
+export function demoLogin(): { phone: string; pin: string } {
+  // Any anchor gives the same members and phones; only entry dates depend on it.
+  const chair = buildSeed("2026-11-20").members.find((m) => m.role === "chair");
+  const pin = chair ? DEMO_PINS[chair.id] : undefined;
+  if (!chair || !pin) throw new Error("no demo chair PIN");
+  return { phone: chair.phone, pin };
+}
+
+async function timedUssdCheck(deps: HostedDeps): Promise<CheckResult> {
+  const name = "timed USSD request (demo PIN + Balance)";
+  const { phone, pin } = demoLogin();
+  const url = new URL("/api/ussd", deps.url).toString();
+  const once = async (session: string) => {
+    const t0 = deps.timer();
+    const r = await deps.postForm(url, { sessionId: session, serviceCode: "*384*123#", phoneNumber: phone, text: `${pin}*4` });
+    return { ...r, ms: Math.round(deps.timer() - t0) };
+  };
+  const tag = randomBytes(4).toString("hex");
+  const cold = await once(`hosted-check-${tag}-1`);
+  const warm = await once(`hosted-check-${tag}-2`);
+  const problems: string[] = [];
+  for (const [label, r] of [["cold", cold], ["warm", warm]] as const) {
+    if (r.status !== 200) problems.push(`${label} HTTP ${r.status}`);
+    else if (!r.body.startsWith("END Savings ")) problems.push(`${label} reply is not the Balance screen: ${JSON.stringify(r.body.slice(0, 60))}`);
+  }
+  if (warm.ms >= USSD_WARM_LIMIT_MS) problems.push(`warm ${warm.ms} ms, limit ${USSD_WARM_LIMIT_MS} ms`);
+  const timing = `cold ${cold.ms} ms, warm ${warm.ms} ms`;
+  return problems.length === 0 ? { name, ok: true, detail: `Balance screen; ${timing}` } : { name, ok: false, detail: `${problems.join("; ")} (${timing})` };
 }
 
 async function healthCheck(deps: HostedDeps, name: string): Promise<CheckResult> {
@@ -145,6 +184,7 @@ export async function runHostedChecks(deps: HostedDeps): Promise<CheckResult[]> 
   out.push(await guard("DATABASE_URL is the transaction pooler, as ghost_app", () => poolerCheck(deps)));
   out.push(await guard(`${PARALLEL_WRITERS} concurrent appends through the pooler`, () => concurrentAppendCheck(deps)));
   out.push(await healthCheck(deps, "GET /api/health after"));
+  out.push(await guard("timed USSD request (demo PIN + Balance)", () => timedUssdCheck(deps)));
   return out;
 }
 
@@ -187,6 +227,11 @@ async function main() {
       owner: fromPgPool(ownerPool),
       appUrl: env.DATABASE_URL as string,
       appDbs: appPools.map(fromPgPool),
+      postForm: async (u, fields) => {
+        const r = await fetch(u, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(fields).toString(), cache: "no-store" });
+        return { status: r.status, body: await r.text() };
+      },
+      timer: () => performance.now(),
     });
     for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}: ${r.detail}`);
     if (results.some((r) => !r.ok)) process.exitCode = 1;

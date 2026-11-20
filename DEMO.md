@@ -212,4 +212,4 @@ $env:ALLOW_HOSTED_CHECK = "true"
 npm run hosted:check -- --url https://<your-deployment>.vercel.app
 ```
 
-Expected: five `PASS` lines (health before, privilege matrix, pooler as `ghost_app`, 10 concurrent appends, health after). The concurrent-append check writes 10 deposit requests into a new group named `CHK…`. Those rows are permanent, because the ledger is append-only; they never touch `TUBEERA`.
+Expected: six `PASS` lines: health before, privilege matrix, pooler as `ghost_app`, 10 concurrent appends, health after, and a timed USSD request. The last one dials as the demo chair (`+256701200001`, PIN `2580`) and asks for Balance twice, cold then warm. It passes if the warm request takes under 2 seconds; the cold time is printed for information. The concurrent-append check writes 10 deposit requests into a new group named `CHK…`. Those rows are permanent, because the ledger is append-only; they never touch `TUBEERA`.
