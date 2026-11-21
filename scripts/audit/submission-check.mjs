@@ -61,7 +61,13 @@ else {
     const roles = (out.match(/set login password for ghost_(app|readonly)/g) ?? []).length;
     const appDir = /README_BLOCK_CWD=(.*)/.exec(out)?.[1]?.trim();
     record("readme setup: steps 1-3", Boolean(seeded) && roles === 2, seeded ? `${seeded}; ${roles}/2 role passwords set` : `seed line not found; last output: ${out.slice(-300).replace(/\s+/g, " ")}`);
-    if (appDir && serverLine >= 0) {
+    // Another server on port 3000 would answer the page checks instead of the clone's dev server.
+    const busy = await fetch("http://localhost:3000/", { signal: AbortSignal.timeout(3_000) }).then(
+      () => true,
+      () => false,
+    );
+    if (busy) record("readme setup: step 4 (npm run dev)", false, "port 3000 is already in use by another server; stop it and run the check again");
+    else if (appDir && serverLine >= 0) {
       // Step 4: the server line, in the background, with the env the block set (re-run the env lines).
       const envLines = lines.slice(0, serverLine).filter((l) => /^\$env:|^\$sb|^npx supabase status/.test(l) && !/SERVICE_ROLE_KEY/.test(l)).join("\n");
       const serverScript = join(runDir, "server.ps1");
