@@ -1,1 +1,5 @@
-*.sh text eol=lf
+# LF everywhere, on every OS. Several tests read source files and match exact text,
+# and Windows checkouts with core.autocrlf=true would otherwise turn them into CRLF.
+* text=auto eol=lf
+*.png binary
+*.ico binary
