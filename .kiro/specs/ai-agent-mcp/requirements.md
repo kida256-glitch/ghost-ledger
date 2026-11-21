@@ -35,9 +35,11 @@ This spec adds a read-only assistant over the ledger. Six tool handlers answer q
 
 ### A4: Providers
 
-1. `AGENT_PROVIDER` SHALL select `mock` (default) or the one real provider chosen at approval. Keys and model ids SHALL be server-only environment variables.
+1. `AGENT_PROVIDER` SHALL select `mock` (default) or `gemini`. `GEMINI_API_KEY` and `AGENT_MODEL` SHALL be server-only environment variables. Providers SHALL sit behind one adapter interface, so another can be added later.
 2. The `mock` provider SHALL choose tools from keywords and SHALL write templated answers from the tool results. The same question on the same ledger SHALL give the same answer.
-3. IF the real provider fails or times out (15 s), THEN the endpoint SHALL answer with the mock provider and mark the answer as an offline answer.
+3. IF the real provider fails, or the request reaches its overall deadline of 25 seconds, THEN the endpoint SHALL answer with the mock provider and mark the answer as an offline answer.
+4. The route SHALL set `maxDuration = 30` explicitly. Vercel's current limit for Hobby, with fluid compute, is 300 s by default and at most (Vercel docs, "Configuring Maximum Duration").
+5. `npm run agent:smoke` SHALL list the provider's current models, pick a fast, inexpensive one that supports content generation, make one real call with a trivial prompt, and print only the model id and the answer. The key SHALL come from the shell environment only, and SHALL never be read from or written to a file, or printed.
 
 ### A5: Grounding and prompt injection
 

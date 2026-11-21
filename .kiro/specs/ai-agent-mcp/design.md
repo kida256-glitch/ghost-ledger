@@ -83,9 +83,9 @@ interface AgentProvider {
   - Example: "2 things look suspicious: 1. Loan paid out with no approval: … (seq 480). 2. …"
 - Untrusted text is put inside `"…"` after removing quotes and newlines, and cut to 120 characters.
 
-### 4.2 Real provider: decision needed
+### 4.2 Real provider: Gemini (approved)
 
-The user must choose Bedrock or Gemini before task 5. The facts below come from current docs (fetched while writing this spec) and are checked again in task 5.
+The user chose Gemini. Bedrock is kept here only as a note for a later adapter. The facts below come from current docs (fetched while writing this spec) and are checked again in task 5.
 
 - **Amazon Bedrock.**
   - Converse API: `POST https://bedrock-runtime.<region>.amazonaws.com/model/<modelId>/converse` with `Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK` (a Bedrock API key; AWS user guide, "Use an Amazon Bedrock API key").
@@ -96,7 +96,7 @@ The user must choose Bedrock or Gemini before task 5. The facts below come from 
   - `POST https://generativelanguage.googleapis.com/v1beta/interactions` with header `x-goog-api-key: $GEMINI_API_KEY`. Function tools are `{ type: "function", name, description, parameters }`, and results go back as `function_result` steps (Gemini API function-calling docs).
   - Env: `GEMINI_API_KEY` and `AGENT_MODEL`. The docs' example model id is `gemini-4-hydrogen`; the id to use is confirmed against the models page in task 5.
 
-Either way the adapter uses plain `fetch` with a 15 s `AbortSignal.timeout`, so no new dependency is needed. The key is read from the env only inside the adapter, and error messages never include it or the response body.
+The adapter uses plain `fetch`, with no SDK. Each call gets the remaining part of the request's overall deadline (25 s, design §7) as an `AbortSignal`. When the deadline passes, or the provider fails, the agent answers with the mock provider on the same question and marks the answer `offline: true`. `npm run agent:smoke` (`scripts/agent-smoke.ts`) lists the models, picks one, makes one real call, and prints only the model id and the answer. The model id comes from that list, not from doc examples. The key is read from the env only inside the adapter, and error messages never include it or the response body.
 
 ## 5. Agent loop and grounding (A3.2, A5)
 
@@ -146,6 +146,7 @@ create table agent_usage (
   5. run the agent, passing `maxOutputTokens`.
 - **Status codes:** 200, 400 `BAD_INPUT`, 401 `NOT_SIGNED_IN`, 403 `NOT_A_LEADER`, 429 `RATE_LIMITED`, 503 `UNAVAILABLE`. Any exception becomes 503 with a generic message.
 - **Logging:** `{ event: "agent", outcome, provider, tools: [names], rounds }` only.
+- **Deadline:** a 25 s `AbortController` for the whole request. The route also sets `maxDuration = 30`, inside Vercel Hobby's 300 s limit, so Vercel never cuts the function off before the fallback answer is sent.
 - **Route:** `runtime = "nodejs"`, `dynamic = "force-dynamic"`, `Cache-Control: no-store`. Next.js Route Handlers get cookies, so the same server-side session check works.
 
 ## 8. Read-only guard (PA3)
@@ -169,7 +170,7 @@ Example tests are listed per task. E2E adds two walkthrough steps (A7).
 
 ## 10. Decisions
 
-1. **Real provider:** Bedrock or Gemini. **Needs your choice.** The spec placeholder wasn't filled in. Task 5 waits on it; tasks 1–4 and 6 don't.
+1. **Real provider: Gemini** (approved). Behind the `AgentProvider` interface, so another can be added later.
 2. **Single-turn chat** (no memory). This keeps the endpoint stateless and the grounding test simple.
 3. **Mock fallback** when the real provider fails, marked "offline answer", so the demo never shows a broken agent.
 4. **Untrusted ledger text is quoted and cut to 120 characters** in mock answers. With a real provider, it travels only inside JSON tool results.
