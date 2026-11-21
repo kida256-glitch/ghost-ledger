@@ -123,6 +123,8 @@ $env:READONLY_DATABASE_URL = "postgresql://ghost_readonly:local-ro-password-0000
 npm run dev        # or: npm run build; npm start
 ```
 
+`npm ci` may warn that esbuild's install script wasn't run (npm 11 holds back install scripts); that's expected, nothing needs it.
+
 Open <http://localhost:3000>: the phone simulator is at `/simulator` and the leader dashboard at `/dashboard`. The demo logins, phone PINs and a 3-minute walkthrough are in [DEMO.md](DEMO.md#8-judge-walkthrough-about-3-minutes). To reach it from a phone on the same Wi-Fi, run `npm start -- -H 0.0.0.0` after `npm run build` and open `http://<your laptop's IP>:3000`; Windows may ask you to allow Node.js through the firewall.
 
 `npx supabase db reset` wipes the local data. Seed again (steps 2 and 3) after it, and after `npm run test:integration` or `npm run test:e2e`, which both reset the database.
