@@ -30,7 +30,8 @@
     "demo:tamper": "tsx scripts/demo-tamper.ts",
     "demo:restore": "tsx scripts/demo-restore.ts",
     "demo:unlock": "tsx scripts/demo-unlock.ts",
-    "demo:reset": "tsx scripts/demo-reset.ts"
+    "demo:reset": "tsx scripts/demo-reset.ts",
+    "agent:smoke": "tsx scripts/agent-smoke.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

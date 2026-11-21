@@ -61,13 +61,16 @@ async function loop(opts: AgentOptions, provider: AgentProvider, deadlineMs: num
   try {
     const specs = toolSpecs(opts.tools);
     const transcript: ToolTurn[] = [];
+    let state: unknown;
     for (let round = 0; ; round++) {
       if (round >= MAX_ROUNDS) return finish(CANT_TELL, transcript, provider, round);
-      const reply = await until(provider.next({ system: SYSTEM_PROMPT, question: opts.question, transcript, tools: specs, maxOutputTokens: opts.maxOutputTokens, signal: controller.signal }));
+      const reply = await until(provider.next({ system: SYSTEM_PROMPT, question: opts.question, transcript, tools: specs, maxOutputTokens: opts.maxOutputTokens, signal: controller.signal, ...(state === undefined ? {} : { state }) }));
       if (reply.kind === "answer") return finish(reply.text.trim() || CANT_TELL, transcript, provider, round);
       if (reply.calls.length === 0) return finish(CANT_TELL, transcript, provider, round);
+      state = reply.state;
       for (const call of reply.calls.slice(0, MAX_CALLS_PER_ROUND)) {
-        const id = `call_${transcript.length + 1}`;
+        // The provider's own call id when it has one (Gemini matches results to calls by it).
+        const id = call.id ?? `call_${transcript.length + 1}`;
         if (!isTool(call.name)) {
           transcript.push({ id, name: call.name, args: call.args, result: { error: "UNKNOWN_TOOL" } });
           continue;

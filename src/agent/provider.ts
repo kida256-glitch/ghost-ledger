@@ -25,9 +25,13 @@ export interface ProviderRequest {
   readonly tools: readonly ToolSpec[];
   readonly maxOutputTokens: number;
   readonly signal: AbortSignal;
+  /** Whatever the provider returned as `state` last round (e.g. its own history), passed back unchanged. */
+  readonly state?: unknown;
 }
 
-export type ProviderReply = { readonly kind: "tools"; readonly calls: readonly { readonly name: string; readonly args: unknown }[] } | { readonly kind: "answer"; readonly text: string };
+export type ProviderReply =
+  | { readonly kind: "tools"; readonly calls: readonly { readonly name: string; readonly args: unknown; readonly id?: string }[]; readonly state?: unknown }
+  | { readonly kind: "answer"; readonly text: string };
 
 export interface AgentProvider {
   readonly id: "mock" | "gemini";

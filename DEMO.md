@@ -216,6 +216,20 @@ Run `demo:reset` first (section 6) so the group is fresh. Use two browser tabs: 
 8. **Anomalies.** Open **More → Alerts**: two high alerts on the planted loan ("Loan paid out with no approval", "Loan above the savings limit"), each linking to its ledger entry.
 9. **Ask the ledger.** On **Home**, tap **Anything suspicious?**: the assistant explains both planted anomalies with their seq number. Run `demo:tamper` again and tap **Is the ledger intact?**: "The chain fails at seq N". `demo:restore` puts it back. The tools the assistant used are listed under each answer, and the seq chips open the ledger at that entry.
 
+### Optional: answers from Gemini
+
+The default \mock\ assistant needs no key. To try Gemini, in your own shell (the key stays in the shell, never in a file):
+
+\\\powershell
+$env:GEMINI_API_KEY = "<your key>"
+npm run agent:smoke            # lists your models, picks a fast, inexpensive one, prints its id and one answer
+# then, for the app (locally or as Vercel env vars):
+$env:AGENT_PROVIDER = "gemini"
+$env:AGENT_MODEL = "<the model id agent:smoke printed>"
+\\\
+
+If Gemini fails or takes longer than 25 seconds, the panel shows the built-in answer, marked "Offline answer".
+
 ### Use the read-only tools from Kiro (MCP)
 
 Add this to `.kiro/settings/mcp.json` (local seeded database, the `ghost_readonly` role only):
