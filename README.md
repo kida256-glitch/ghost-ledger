@@ -30,6 +30,24 @@ Every non-local connection uses TLS that verifies the Supabase CA and hostname, 
 
 > **The service-role key lives only in the shell that runs `db:seed`.** Set it with `$env:SUPABASE_SERVICE_ROLE_KEY = "..."` (see [DEMO.md](DEMO.md)), never in `.env`/`.env.local`, never in Vercel, never in git. It bypasses Row Level Security and every grant. The app's `appEnv()` refuses to start if the key is set. The seed script doesn't call `appEnv()`, so that check doesn't block it; instead the seed refuses if any local `.env*` file assigns the key (Next.js would load it into the app) or if it detects Vercel (`VERCEL`) or `NODE_ENV=production`.
 
+## Routes
+
+| Route | Shows |
+|-------|-------|
+| `/` | Start page with links to the simulator and the dashboard |
+| `/simulator` | Feature-phone simulator calling the real `/api/ussd`, with the demo members' phones and PINs |
+| `/login` | Leader sign-in (Supabase Auth), with the demo accounts when `DEMO_LEADER_PASSWORD_HINT` is set |
+| `/dashboard` | Overview: cash, savings, social fund, loans owed, members, overdue and pending counts, alerts, chain status, agent placeholder |
+| `/dashboard/deposits` | Pending deposit requests with Confirm (only for a leader who isn't the depositor) |
+| `/dashboard/loans` | Loan requests with Approve (approve and pay out) and Reject with a reason; active loans with overdue days |
+| `/dashboard/cash` | Record a loan repayment or a social fund contribution for another member |
+| `/dashboard/members` | Members with balances and limits; register a member |
+| `/dashboard/ledger` | Every entry, newest first, with "Chain verified" (head hash) or "Chain failed at seq N"; Reverse an entry |
+| `/dashboard/alerts` | Anomaly alerts by severity, linking to their entries |
+| `/dashboard/more` | Cash in, members, alerts, simulator, sign out |
+| `POST /api/ussd` | The USSD gateway webhook (form-encoded, `CON`/`END` replies) |
+| `GET /api/health` | The demo group's chain status, read as `ghost_readonly` |
+
 ## Keep-alive
 
 Supabase pauses free-tier projects after 7 days without activity, and a paused project would break the live demo. `vercel.json` therefore has a Vercel cron job that calls `GET /api/health` every day at 06:00 UTC (09:00 Kampala). The health route makes one read-only query as `ghost_readonly` through the transaction pooler, which counts as activity. It needs no secret and changes nothing. The Hobby plan allows one cron run per day, which is enough.

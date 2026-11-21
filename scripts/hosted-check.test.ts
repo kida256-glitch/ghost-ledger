@@ -48,12 +48,14 @@ function deps(over: Partial<HostedDeps> = {}): HostedDeps {
     clock: () => new Date("2026-11-20T09:00:00.000Z"),
     postForm: async () => ({ status: 200, body: BALANCE }),
     timer: fakeTimer([0, 1_400, 1_400, 1_700]),
+    fetchPage: async (u: string) =>
+      u.endsWith("/dashboard") ? { status: 307, location: "/login", body: "" } : { status: 200, location: null, body: "<li>Waiswa Henry</li>" },
     ...over,
   };
 }
 
 describe("task 30: hosted:check logic (design §14.4)", () => {
-  it("all six checks pass on a correct setup; the appends land in a separate CHK group", async () => {
+  it("all eight checks pass on a correct setup; the appends land in a separate CHK group", async () => {
     const results = await runHostedChecks(deps());
     expect(results.map((r) => [r.ok, r.name])).toEqual([
       [true, "GET /api/health before"],
@@ -62,6 +64,8 @@ describe("task 30: hosted:check logic (design §14.4)", () => {
       [true, `${PARALLEL_WRITERS} concurrent appends through the pooler`],
       [true, "GET /api/health after"],
       [true, "timed USSD request (demo PIN + Balance)"],
+      [true, "/dashboard without a session redirects to /login"],
+      [true, "/simulator answers 200 with the demo members"],
     ]);
     expect(results[5]?.detail).toBe("Balance screen; cold 1400 ms, warm 300 ms");
     expect(results[3]?.detail).toMatch(/^group CHK[0-9A-F]{5}: seq 1\.\.10, chain verified$/);
@@ -120,6 +124,12 @@ describe("task 30: hosted:check logic (design §14.4)", () => {
     expect(down[5]?.detail).toMatch(/^cold HTTP 500; warm HTTP 500/);
     const threw = await runHostedChecks(deps({ postForm: () => Promise.reject(new TypeError("fetch failed")) }));
     expect(threw[5]).toEqual({ name: "timed USSD request (demo PIN + Balance)", ok: false, detail: "TypeError" });
+  }, 60_000);
+
+  it("FAILs a dashboard that renders without a session, and a missing simulator", async () => {
+    const r = await runHostedChecks(deps({ fetchPage: async (u) => (u.endsWith("/dashboard") ? { status: 200, location: null, body: "Overview" } : { status: 404, location: null, body: "" }) }));
+    expect(r[6]).toMatchObject({ ok: false, detail: "HTTP 200, Location none" });
+    expect(r[7]).toMatchObject({ ok: false, detail: "HTTP 404" });
   }, 60_000);
 
   it("--url accepts https origins (and localhost for trying it locally) only", () => {

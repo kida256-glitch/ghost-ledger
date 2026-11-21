@@ -39,10 +39,10 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - Spec-first: ledger-core R14.12. Then `buildSeed`, `insertSeed` shared by `db:seed` and `demo:reset`, `scripts/demo-reset.ts`, and DEMO.md (run before recording and before submitting).
   - Tests: P25 still holds plus the 3 pending items; `demo:reset` on PGlite refuses without the flag, as `ghost_app`, and without the group or a login; after a tamper and new USSD requests it gives a verified fresh group with the same logins and demo PINs, and leaves a second group untouched.
 
-- [ ] 9. Hosted checks, docs and the acceptance walkthrough (D16)
+- [x] 9. Hosted checks, docs and the acceptance walkthrough (D16)
   - Two new `hosted:check` checks (the dashboard redirects without a session; the simulator is 200). DEMO.md: the judge walkthrough.
   - Tests: the new checks PASS and FAIL with a fake `fetch`.
   - Done when: the walkthrough has been run end to end against local Supabase (automated by task 10 if Playwright is added, otherwise by hand with the results recorded in KIRO_USAGE.md).
 
-- [ ] 10. Playwright walkthrough (optional)
+- [x] 10. Playwright walkthrough (optional)
   - `tests/e2e/walkthrough.spec.ts` and `npm run test:e2e`, automating D16 against `next start` and local Supabase. It is not part of the Definition of Done.

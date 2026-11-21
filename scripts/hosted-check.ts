@@ -8,6 +8,7 @@
 //      give a contiguous, verified chain in a separate check group
 //   5. GET /api/health is still "verified"
 //   6. a full USSD request (demo PIN + Balance), cold then warm, warm under 2 s (U18.3)
+//   7. /dashboard without a session redirects to /login; 8. /simulator answers 200 (dashboard-simulator task 9)
 // The check group's rows are permanent (the ledger is append-only); they never
 // touch the demo group.
 import { randomBytes, randomUUID } from "node:crypto";
@@ -46,6 +47,8 @@ export interface HostedDeps {
   postForm: (url: string, fields: Record<string, string>) => Promise<{ status: number; body: string }>;
   /** Milliseconds, for timing (performance.now in production, a fake in tests). */
   timer: () => number;
+  /** GET without following redirects: status and Location header. */
+  fetchPage: (url: string) => Promise<{ status: number; location: string | null; body: string }>;
 }
 
 /** The first demo member (the chair) and their PIN: a known, unlocked login on the seeded group. */
@@ -185,6 +188,21 @@ export async function runHostedChecks(deps: HostedDeps): Promise<CheckResult[]> 
   out.push(await guard(`${PARALLEL_WRITERS} concurrent appends through the pooler`, () => concurrentAppendCheck(deps)));
   out.push(await healthCheck(deps, "GET /api/health after"));
   out.push(await guard("timed USSD request (demo PIN + Balance)", () => timedUssdCheck(deps)));
+  out.push(
+    await guard("/dashboard without a session redirects to /login", async () => {
+      const r = await deps.fetchPage(new URL("/dashboard", deps.url).toString());
+      const to = r.location === null ? null : new URL(r.location, deps.url).pathname;
+      const ok = r.status >= 300 && r.status < 400 && to === "/login";
+      return { name: "/dashboard without a session redirects to /login", ok, detail: ok ? `HTTP ${r.status} to /login` : `HTTP ${r.status}, Location ${r.location ?? "none"}` };
+    }),
+  );
+  out.push(
+    await guard("/simulator answers 200 with the demo members", async () => {
+      const r = await deps.fetchPage(new URL("/simulator", deps.url).toString());
+      const ok = r.status === 200 && r.body.includes("Waiswa Henry");
+      return { name: "/simulator answers 200 with the demo members", ok, detail: ok ? "HTTP 200" : `HTTP ${r.status}${r.status === 200 ? ", demo members missing" : ""}` };
+    }),
+  );
   return out;
 }
 
@@ -232,6 +250,10 @@ async function main() {
         return { status: r.status, body: await r.text() };
       },
       timer: () => performance.now(),
+      fetchPage: async (u) => {
+        const r = await fetch(u, { redirect: "manual", cache: "no-store" });
+        return { status: r.status, location: r.headers.get("location"), body: await r.text() };
+      },
     });
     for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}: ${r.detail}`);
     if (results.some((r) => !r.ok)) process.exitCode = 1;

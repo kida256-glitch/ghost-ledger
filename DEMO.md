@@ -167,7 +167,55 @@ npm run demo:unlock
 
 It prints only counts, for example `demo:unlock: reset 1 locked or failing PIN(s), cleared 2 rate-limit row(s)`. It touches only the TUBEERA group (`-- --group CODE` for another one), and changes no ledger entries.
 
-## 7. Stop local Supabase
+## 7. Run the whole app locally (dashboard and simulator)
+
+```powershell
+# Once per machine session: Docker Desktop running, then
+npx supabase start
+
+# A fresh, seeded demo database (also sets the runtime role passwords)
+npx supabase db reset
+$env:ADMIN_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:56322/postgres"
+$env:APP_DB_PASSWORD = "local-app-password-0001"
+$env:READONLY_DB_PASSWORD = "local-ro-password-00001"
+npm run db:roles-login
+$sb = @{}
+npx supabase status -o env | ForEach-Object { if ($_ -match '^([A-Z_]+)="?(.*?)"?$') { $sb[$Matches[1]] = $Matches[2] } }
+$env:SUPABASE_URL = $sb.API_URL
+$env:SUPABASE_SERVICE_ROLE_KEY = $sb.SERVICE_ROLE_KEY
+$env:DEMO_LEADER_PASSWORD = "tubeera-demo-2026"
+npm run db:seed
+Remove-Item Env:SUPABASE_SERVICE_ROLE_KEY
+
+# The app's environment (the service-role key must NOT be set here)
+$env:SUPABASE_PUBLISHABLE_KEY = $sb.PUBLISHABLE_KEY
+$env:DEMO_LEADER_PASSWORD_HINT = "tubeera-demo-2026"
+$env:DATABASE_URL = "postgresql://ghost_app:local-app-password-0001@127.0.0.1:56322/postgres"
+$env:READONLY_DATABASE_URL = "postgresql://ghost_readonly:local-ro-password-00001@127.0.0.1:56322/postgres"
+
+# Development server, or the production build the way Vercel runs it:
+npm run dev                       # http://localhost:3000
+# npm run build; npm start        # http://localhost:3000
+```
+
+Demo logins (password `tubeera-demo-2026` locally): `tubeera.chair@example.com` (Nakato Sarah, chair) and `tubeera.treasurer@example.com` (Ssempala Joseph, treasurer). The phone PINs are in the table under section 6.
+
+`npm run test:e2e` does all of the above by itself (it resets the local database first) and then runs the walkthrough below with Playwright on a phone-sized browser.
+
+## 8. Judge walkthrough (about 3 minutes)
+
+Run `demo:reset` first (section 6) so the group is fresh. Use two browser tabs: `/simulator` and `/dashboard`.
+
+1. **First dial.** On `/simulator`, tap **Waiswa Henry** and press **Dial**. Type `7391`, Send, `7391`, Send: "PIN saved".
+2. **Deposit request.** Dial again: `7391`, `1` (Save), `5000`, `1` (Confirm): "Request sent: UGX 5,000. A leader will confirm it."
+3. **Loan request.** Tap **Nakato Sarah** (PIN `2580`), Dial: `2580`, `2` (Request loan), `50000`, `1` (month), `1` (Confirm): "Loan request sent."
+4. **Leader confirms and approves.** On `/dashboard`, sign in as the **treasurer**. Under **Deposits**, confirm Waiswa Henry's UGX 5,000. Under **Loans**, approve Nakato Sarah's UGX 50,000 ("Loan approved and paid out"). The seeded requests from Birungi Joan, Okello David and the chair's own deposit are there too. The chair's own deposit says another leader must confirm it.
+5. **Chain verified.** Open **Ledger**: "Chain verified", with the entry count and the full head hash.
+6. **Tamper.** In a terminal: `$env:ALLOW_TAMPER_DEMO = "true"; npm run demo:tamper` (with `ADMIN_DATABASE_URL` set). Reload the ledger: "Chain failed at seq N" on every dashboard page, with the broken entry marked.
+7. **Restore.** `npm run demo:restore`, reload: "Chain verified" again.
+8. **Anomalies.** Open **More → Alerts**: two high alerts on the planted loan ("Loan paid out with no approval", "Loan above the savings limit"), each linking to its ledger entry.
+
+## 9. Stop local Supabase
 
 ```powershell
 npx supabase stop
@@ -232,4 +280,4 @@ $env:ALLOW_HOSTED_CHECK = "true"
 npm run hosted:check -- --url https://<your-deployment>.vercel.app
 ```
 
-Expected: six `PASS` lines: health before, privilege matrix, pooler as `ghost_app`, 10 concurrent appends, health after, and a timed USSD request. The last one dials as the demo chair (`+256701200001`, PIN `2580`) and asks for Balance twice, cold then warm. It passes if the warm request takes under 2 seconds; the cold time is printed for information. The concurrent-append check writes 10 deposit requests into a new group named `CHK…`. Those rows are permanent, because the ledger is append-only; they never touch `TUBEERA`.
+Expected: eight `PASS` lines: health before, privilege matrix, pooler as `ghost_app`, 10 concurrent appends, health after, a timed USSD request, `/dashboard` redirecting to `/login` without a session, and `/simulator` answering 200. The last one dials as the demo chair (`+256701200001`, PIN `2580`) and asks for Balance twice, cold then warm. It passes if the warm request takes under 2 seconds; the cold time is printed for information. The concurrent-append check writes 10 deposit requests into a new group named `CHK…`. Those rows are permanent, because the ledger is append-only; they never touch `TUBEERA`.
