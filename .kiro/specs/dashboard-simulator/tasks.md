@@ -15,7 +15,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - `offers.ts`, the remaining views, and `messages.ts`.
   - Tests: **DP1** `D14.1 D5.2 D6.2 D8.2 every offer is accepted by the domain and every actionable request is offered`; messages for every code.
 
-- [ ] 3. Server actions (D13, design §5)
+- [x] 3. Server actions (D13, design §5)
   - `actions-core.ts` and `actions.ts`, with zod schemas and idempotency keys.
   - Tests: **DP2** `D14.2 no server action can be called by a non-leader`; **DP3** `D14.3 actions never throw and only write as the leader in the leader's group`; each action on PGlite through the real writer (Approve writes 2 entries, a double submit writes once); the source checks from design §9.
 

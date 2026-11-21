@@ -1,12 +1,16 @@
 // Per-instance database access and per-request session loading for dashboard
 // pages (design §1). Reads use ghost_readonly; writes (later tasks) use ghost_app.
+import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import type pg from "pg";
 import { cache } from "react";
 import { createRuntimePool, fromPgPool } from "../../../db/db";
 import { createLedgerReader, type LedgerReader } from "../../../db/ledger-reader";
+import { createLedgerWriter, type LedgerWriter } from "../../../db/ledger-writer";
 import { getAuthUserId } from "../../../lib/auth/supabase-server";
-import { readonlyEnv } from "../../../lib/env";
+import { appEnv, readonlyEnv } from "../../../lib/env";
+import { logJson } from "../../../lib/log";
+import type { ActionDeps } from "./actions-core";
 import { checkLeader, type SessionCheck } from "./session";
 import { groupData, type GroupData } from "./views";
 
@@ -37,3 +41,24 @@ export const loadGroupData = cache(async (groupId: string): Promise<GroupData> =
   if (!group) throw new Error("group not found");
   return groupData(group, members, entries);
 });
+
+let writePool: pg.Pool | undefined;
+/** Writes run as ghost_app (DATABASE_URL), one connection per instance. */
+export function writerDb(): LedgerWriter {
+  if (writePool === undefined) {
+    const env = appEnv();
+    writePool = createRuntimePool(env.DATABASE_URL, env.DATABASE_CA_CERT);
+  }
+  return createLedgerWriter(fromPgPool(writePool), { clock: () => new Date(), newId: randomUUID });
+}
+
+/** For server actions: every call checks the session itself (D1.4). */
+export function actionDeps(): ActionDeps {
+  return {
+    session: () => checkLeader({ authUserId: getAuthUserId, reader: readerDb() }),
+    get writer() {
+      return writerDb();
+    },
+    log: logJson,
+  };
+}
