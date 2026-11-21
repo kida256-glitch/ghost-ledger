@@ -4,7 +4,7 @@ Order (approved): 1, 2, 3, 4, 6, then 5. Each task report lists commits, test co
 
 Every task ends with the Definition of Done (`npm run typecheck && npm run lint && npm test && npm run build`), a commit, a push, and an update to `KIRO_USAGE.md`. Property titles name the requirement ids they cover. There are no mutation checks for this spec.
 
-- [ ] 1. Tool handlers and the read-only guard (A1, A8.1, A8.3; design §2, §8)
+- [x] 1. Tool handlers and the read-only guard (A1, A8.1, A8.3; design §2, §8)
   - `src/mcp/tools.ts` and `src/mcp/schemas.ts`; the ESLint rule for `src/mcp/**`, `src/agent/**` and `scripts/mcp-server.ts`.
   - Tests: **PA1** `A8.1 A1.2 A1.4 tool results validate and contain only the bound group`; **PA3** `A8.3 the tool set is read-only` (a source test, plus a lint fixture test that a writer import is an error); examples for each tool on the seed (2 anomalies with their seqs; verify after `tamper`; a statement by id, phone and name; bad input gives a typed error).
 

@@ -81,6 +81,27 @@ export default tseslint.config(
   },
   ...domainBlocks,
   {
+    // ai-agent-mcp PA3: the tools, the agent and the MCP server are read-only.
+    // Nothing here may import a writer, the USSD repo, the agent usage counter,
+    // row-insert helpers, the raw pg driver or test-only database code.
+    files: ["src/mcp/**/*.ts", "src/agent/**/*.ts", "scripts/mcp-server.ts"],
+    ignores: ["**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [{ name: "pg", message: "Read-only code uses LedgerReader, not the pg driver (ai-agent-mcp PA3)." }],
+          patterns: [
+            {
+              regex: "(^|/)(ledger-writer|ussd-repo|agent-usage|rows)$|(^|/)db/testing(/|$)",
+              message: "src/mcp, src/agent and the MCP server are read-only: no writer, USSD repo, usage counter, row helpers or test db code (ai-agent-mcp PA3).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["**/*.test.ts", "**/*.test.tsx"],
     plugins: { vitest },
     rules: {
