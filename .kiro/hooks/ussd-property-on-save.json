@@ -3,12 +3,12 @@
   "hooks": [
     {
       "name": "ussd-property-on-save",
-      "description": "Runs the USSD output-shape property test (testing.md property 6). ussd-engine adds the test and removes --passWithNoTests.",
+      "description": "Runs the three USSD property tests (UP1-UP3, ussd-engine U15; UP1 is testing.md property 6).",
       "trigger": "PostFileSave",
       "matcher": "src[\\\\/]ussd[\\\\/]",
       "action": {
         "type": "command",
-        "command": "node scripts/hooks/saved-file.mjs --file \"{{filePath}}\" run \"npx vitest run src/ussd --testNamePattern \\\"R.*USSD property\\\" --passWithNoTests\""
+        "command": "node scripts/hooks/saved-file.mjs --file \"{{filePath}}\" run \"npx vitest run src/ussd --testNamePattern \\\"UP[123] U15\\\"\""
       },
       "timeout": 180
     }
