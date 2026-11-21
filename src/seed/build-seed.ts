@@ -159,6 +159,15 @@ export function buildSeed(anchor: CalendarDate): Seed {
     }
     for (const f of loanSteps.get(k) ?? []) f(next);
   }
+  // R14.12: work left for the leaders, filed at the last meeting (10:30 Kampala): two deposit
+  // requests (one the chair's own, so another leader must confirm it) and one loan request.
+  {
+    let t = meeting(12) + 30 * 60_000;
+    const next = () => (t += 1_000);
+    steps.push({ kind: "command", at: next(), command: { kind: "requestDeposit", memberId: chair.id, amount: 15_000 }, actor: chair.id });
+    steps.push({ kind: "command", at: next(), command: { kind: "requestDeposit", memberId: m(10).id, amount: 12_000 }, actor: m(10).id });
+    steps.push({ kind: "command", at: next(), command: { kind: "requestLoan", memberId: m(3).id, principal: 80_000, termMonths: 2 }, actor: m(3).id });
+  }
   // The planted loan: 02:13 Kampala, about 10 days before the anchor (R14.4).
   const plantedAt = anchorMs - 10 * DAY - KAMPALA + (2 * 60 + 13) * 60_000;
   steps.push({ kind: "planted", at: plantedAt });

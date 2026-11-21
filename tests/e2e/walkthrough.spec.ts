@@ -120,3 +120,24 @@ test("7. a leader registers a member and reverses an entry", async ({ page }) =>
   await expect(page.locator("li[id^=seq-]").first()).toContainText("Reversal");
   await expect(page.getByText("Chain verified")).toBeVisible();
 });
+
+test("8. demo:reset gives a fresh group with work waiting for the leaders", async ({ page }) => {
+  const out = execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "--silent", "demo:reset"], {
+    encoding: "utf8",
+    shell: process.platform === "win32",
+    env: { ...process.env, ALLOW_DEMO_RESET: "true" },
+  });
+  expect(out).toContain("seeded TUBEERA again");
+  await signIn(page, "tubeera.treasurer@example.com");
+  await expect(page.getByText("Chain verified")).toBeVisible();
+  await page.goto("/dashboard/deposits");
+  await expect(page.locator("li", { hasText: "Birungi Joan" })).toContainText("UGX 12,000");
+  await expect(page.locator("li", { hasText: "Nakato Sarah" })).toContainText("UGX 15,000");
+  await page.goto("/dashboard/loans");
+  await expect(page.getByTestId("loan-request").filter({ hasText: "Okello David" })).toContainText("UGX 80,000");
+  // The chair's own deposit needs another leader.
+  await page.context().clearCookies();
+  await signIn(page, "tubeera.chair@example.com");
+  await page.goto("/dashboard/deposits");
+  await expect(page.locator("li", { hasText: "Nakato Sarah" })).toContainText("Another leader must do this");
+});

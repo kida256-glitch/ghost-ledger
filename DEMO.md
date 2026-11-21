@@ -37,7 +37,7 @@ npm run db:seed -- --anchor 2026-11-20
 Remove-Item Env:SUPABASE_SERVICE_ROLE_KEY
 ```
 
-Expected output ends with `seeded TUBEERA: 12 members, 489 entries, anchor 2026-11-20`. Without `--anchor`, the seed uses today's date in Africa/Kampala. A second run prints `group TUBEERA already exists; nothing changed`; run `npx supabase db reset` first to seed again.
+Expected output ends with `seeded TUBEERA: 12 members, 492 entries, anchor 2026-11-20, 11 demo PINs`. Without `--anchor`, the seed uses today's date in Africa/Kampala. A second run prints `group TUBEERA already exists; nothing changed`; run `npx supabase db reset` first to seed again.
 
 The seed refuses to run if `SUPABASE_SERVICE_ROLE_KEY` is assigned in any `.env*` file in the repository root. Keep it in the shell.
 
@@ -138,6 +138,22 @@ The group is fictional. The seed sets these PINs (`src/seed/demo-pins.ts`); the 
 | Tumusiime Paul | member | +256701200010 | 9471 |
 | Birungi Joan | member | +256701200011 | 1593 |
 | Waiswa Henry | member | +256701200012 | none: the first dial sets it |
+
+### Reset the demo group
+
+`demo:reset` replaces the TUBEERA group with a fresh one, anchored on today's date in Kampala. Afterwards there are 2 deposit requests waiting (one is the chair's own, so another leader must confirm it), 1 loan request (Okello David), 1 overdue loan, the 2 planted anomalies and a verified chain. The two demo leader logins are kept. Everything done in the demo since the last reset is removed, including members registered on the dashboard. Other groups (such as `hosted:check`'s `CHK…` groups) are not touched.
+
+**Run it before recording the video, and again before submitting.**
+
+```powershell
+$env:ADMIN_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:56322/postgres"
+# Hosted: the hosted ADMIN_DATABASE_URL, plus $env:DATABASE_CA_CERT = Get-Content -Raw .\prod-ca-2021.crt
+$env:ALLOW_DEMO_RESET = "true"
+npm run demo:reset
+Remove-Item Env:ALLOW_DEMO_RESET
+```
+
+It works like `demo:tamper`: it runs only as the table owner and only with `ALLOW_DEMO_RESET=true`, and it switches the append-only triggers off for one transaction only. If anything fails, the whole reset is rolled back.
 
 ### Unlock the demo accounts
 

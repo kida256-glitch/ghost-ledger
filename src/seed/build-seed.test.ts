@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kampalaDateTime, kampalaHour, memberSummary, replay } from "../domain";
+import { kampalaDateTime, kampalaHour, memberSummary, replay, groupSummary } from "../domain";
 import { buildSeed } from "./build-seed";
 
 const seed = buildSeed("2026-11-20");
@@ -15,7 +15,7 @@ describe("buildSeed (R14.1, R14.4, R14.8, R2.4)", () => {
   it("each legitimate loan is requested by the borrower, approved by a leader who isn't the borrower, then disbursed", () => {
     const byLoan = new Map<string, string[]>();
     for (const e of seed.entries) if (e.loanId) byLoan.set(e.loanId, [...(byLoan.get(e.loanId) ?? []), e.type]);
-    const legitimate = [...byLoan].filter(([, types]) => types.includes("LOAN_REQUEST"));
+    const legitimate = [...byLoan].filter(([, types]) => types.includes("LOAN_REQUEST") && types.includes("LOAN_APPROVAL"));
     expect(legitimate).toHaveLength(5);
     for (const [loanId, types] of legitimate) {
       expect(types.slice(0, 3)).toEqual(["LOAN_REQUEST", "LOAN_APPROVAL", "LOAN_DISBURSEMENT"]);
@@ -28,7 +28,7 @@ describe("buildSeed (R14.1, R14.4, R14.8, R2.4)", () => {
 
   it("weekly meetings: every deposit request is confirmed by another leader, all on Saturdays at 10:00 Kampala", () => {
     const requests = seed.entries.filter((e) => e.type === "DEPOSIT_REQUEST");
-    expect(requests).toHaveLength(13 * 12);
+    expect(requests).toHaveLength(13 * 12 + 2);
     for (const e of seed.entries.filter((x) => x.type === "DEPOSIT_CONFIRMATION")) expect(e.actorMemberId).not.toBe(e.subjectMemberId);
     for (const e of requests) {
       expect(kampalaHour(e.occurredAt)).toBe(10);
@@ -52,5 +52,16 @@ describe("buildSeed (R14.1, R14.4, R14.8, R2.4)", () => {
 
   it("rejects a malformed anchor", () => {
     expect(() => buildSeed("20-11-2026")).toThrow(RangeError);
+  });
+
+  it("R14.12 leaves 2 pending deposit requests (one the chair's) and 1 pending loan request, without new anomalies", () => {
+    const state = replay(seed.group, seed.members, seed.entries);
+    const s = groupSummary(state);
+    const chair = seed.members.find((m) => m.role === "chair");
+    expect(s.pendingDeposits.map((d) => [seed.members.find((m) => m.id === d.memberId)?.displayName, d.amount])).toEqual([
+      [chair?.displayName, 15_000],
+      ["Birungi Joan", 12_000],
+    ]);
+    expect(s.pendingLoans.map((l) => [seed.members.find((m) => m.id === l.memberId)?.displayName, l.status, l.principal, l.termMonths])).toEqual([["Okello David", "requested", 80_000, 2]]);
   });
 });

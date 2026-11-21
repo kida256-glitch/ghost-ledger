@@ -18,7 +18,7 @@ import { z } from "zod";
 import { kampalaDate } from "../src/domain";
 import { createPool, fromPgPool, type Db } from "../src/db/db";
 import { INSERT_ENTRY_SQL, INSERT_GROUP_SQL, INSERT_MEMBER_SQL, entryParams, groupParams, memberParams } from "../src/db/rows";
-import { SEED_GROUP_CODE, buildSeed } from "../src/seed/build-seed";
+import { SEED_GROUP_CODE, buildSeed, type Seed } from "../src/seed/build-seed";
 import { DEMO_ACCOUNTS } from "../src/seed/demo-accounts";
 import { DEMO_PINS } from "../src/seed/demo-pins";
 import { argon2PinHasher, type PinHasher } from "../src/ussd/pin";
@@ -66,6 +66,31 @@ export function envFilesWithServiceKey(dir: string): string[] {
     .filter((f) => /^\s*(export\s+)?SUPABASE_SERVICE_ROLE_KEY\s*=\s*\S/m.test(readFileSync(`${dir}/${f}`, "utf8")));
 }
 
+/** Demo PIN hashes by member id (ussd-engine U17.1). */
+export async function demoPinHashes(seed: Seed, pins: PinHasher): Promise<Map<string, string>> {
+  const hashes = new Map<string, string>();
+  for (const m of seed.members) {
+    const pin = DEMO_PINS[m.id];
+    if (pin !== undefined) hashes.set(m.id, await pins.hash(pin));
+  }
+  return hashes;
+}
+
+/**
+ * Inserts a built seed inside the caller's transaction: group, members (with
+ * their Auth links), credentials (with demo PIN hashes) and entries in seq
+ * order, so the chain-link trigger accepts every link. Shared by db:seed and
+ * demo:reset.
+ */
+export async function insertSeed(tx: Db, seed: Seed, links: ReadonlyMap<string, string>, hashes: ReadonlyMap<string, string>): Promise<void> {
+  await tx.query(INSERT_GROUP_SQL, groupParams(seed.group));
+  for (const m of seed.members) {
+    await tx.query(INSERT_MEMBER_SQL, memberParams({ ...m, authUserId: links.get(m.id) ?? null }));
+    await tx.query("insert into member_credentials (member_id, pin_hash) values ($1, $2)", [m.id, hashes.get(m.id) ?? null]);
+  }
+  for (const e of seed.entries) await tx.query(INSERT_ENTRY_SQL, entryParams(e));
+}
+
 export type SeedOutcome = { ok: true; entries: number; members: number } | { ok: false; reason: string };
 
 /**
@@ -100,20 +125,8 @@ export async function runSeed(opts: {
       log(`created demo login ${account.email} for the ${account.role}`);
     }
     // Hash before the transaction, so it stays short.
-    const hashes = new Map<string, string>();
-    for (const m of seed.members) {
-      const pin = DEMO_PINS[m.id];
-      if (pin !== undefined) hashes.set(m.id, await pins.hash(pin));
-    }
-    await db.transaction(async (tx) => {
-      await tx.query(INSERT_GROUP_SQL, groupParams(seed.group));
-      for (const m of seed.members) {
-        await tx.query(INSERT_MEMBER_SQL, memberParams({ ...m, authUserId: links.get(m.id) ?? null }));
-        await tx.query("insert into member_credentials (member_id, pin_hash) values ($1, $2)", [m.id, hashes.get(m.id) ?? null]);
-      }
-      // In chronological (seq) order, so the chain-link trigger accepts every link.
-      for (const e of seed.entries) await tx.query(INSERT_ENTRY_SQL, entryParams(e));
-    });
+    const hashes = await demoPinHashes(seed, pins);
+    await db.transaction((tx) => insertSeed(tx, seed, links, hashes));
     log(`seeded ${SEED_GROUP_CODE}: ${seed.members.length} members, ${seed.entries.length} entries, anchor ${anchor}, ${hashes.size} demo PINs`);
     return { ok: true, entries: seed.entries.length, members: seed.members.length };
   } catch (e) {

@@ -35,7 +35,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - `/simulator` with `Phone` and the demo panel, `USSD_RATE_LIMIT_MAX`, and `isRateLimitedReply` with its friendly message.
   - Tests: request builder, END starting a new session, PIN masking, the demo panel listing 12 members with Waiswa Henry marked "no PIN", the rate limit read from the env (default 30, bad values refused), and the friendly message for an English and a Luganda rate-limit reply.
 
-- [ ] 8. Seed additions and `demo:reset` (D15.2–D15.4, design §8a)
+- [x] 8. Seed additions and `demo:reset` (D15.2–D15.4, design §8a)
   - Spec-first: ledger-core R14.12. Then `buildSeed`, `insertSeed` shared by `db:seed` and `demo:reset`, `scripts/demo-reset.ts`, and DEMO.md (run before recording and before submitting).
   - Tests: P25 still holds plus the 3 pending items; `demo:reset` on PGlite refuses without the flag, as `ghost_app`, and without the group or a login; after a tamper and new USSD requests it gives a verified fresh group with the same logins and demo PINs, and leaves a second group untouched.
 
