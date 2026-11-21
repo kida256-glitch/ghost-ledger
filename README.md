@@ -48,6 +48,15 @@ Every non-local connection uses TLS that verifies the Supabase CA and hostname, 
 | `POST /api/ussd` | The USSD gateway webhook (form-encoded, `CON`/`END` replies) |
 | `GET /api/health` | The demo group's chain status, read as `ghost_readonly` |
 
+## Read-only assistant (agent and MCP)
+
+Six read-only tools (`get_group_summary`, `list_overdue_loans`, `list_pending_requests`, `get_member_statement`, `verify_chain`, `flag_anomalies`) answer from the ledger through `LedgerReader` as `ghost_readonly`. Each is bound to one group, with zod input and output schemas. Two things call them:
+
+- `npm run mcp`: an MCP stdio server for Kiro and other MCP clients (`READONLY_DATABASE_URL`, `MCP_GROUP_CODE`, default `TUBEERA`);
+- `POST /api/agent`: the dashboard's "Ask the ledger" panel. It needs a leader session, takes the group from the leader's record, caps questions at 500 characters and answers at `AGENT_MAX_OUTPUT_TOKENS` (600), and allows `AGENT_DAILY_LIMIT` (30) questions per leader per Kampala day.
+
+`AGENT_PROVIDER=mock` (the default) answers deterministically from real tool results with no API key. `AGENT_PROVIDER=gemini` with `GEMINI_API_KEY` and `AGENT_MODEL` uses Gemini (server-only env vars, never logged). If the model fails or the 25-second deadline passes, the mock answers instead, marked "offline answer". Answers come only from tool results and cite entry seq numbers. Text from the ledger (names, reasons) is treated as data, never as instructions. Nothing in `src/mcp` or `src/agent` can import a writer: an ESLint rule and an import-graph test enforce it.
+
 ## Keep-alive
 
 Supabase pauses free-tier projects after 7 days without activity, and a paused project would break the live demo. `vercel.json` therefore has a Vercel cron job that calls `GET /api/health` every day at 06:00 UTC (09:00 Kampala). The health route makes one read-only query as `ghost_readonly` through the transaction pooler, which counts as activity. It needs no secret and changes nothing. The Hobby plan allows one cron run per day, which is enough.

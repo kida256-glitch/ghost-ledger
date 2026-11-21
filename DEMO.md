@@ -214,6 +214,28 @@ Run `demo:reset` first (section 6) so the group is fresh. Use two browser tabs: 
 6. **Tamper.** In a terminal: `$env:ALLOW_TAMPER_DEMO = "true"; npm run demo:tamper` (with `ADMIN_DATABASE_URL` set). Reload the ledger: "Chain failed at seq N" on every dashboard page, with the broken entry marked.
 7. **Restore.** `npm run demo:restore`, reload: "Chain verified" again.
 8. **Anomalies.** Open **More → Alerts**: two high alerts on the planted loan ("Loan paid out with no approval", "Loan above the savings limit"), each linking to its ledger entry.
+9. **Ask the ledger.** On **Home**, tap **Anything suspicious?**: the assistant explains both planted anomalies with their seq number. Run `demo:tamper` again and tap **Is the ledger intact?**: "The chain fails at seq N". `demo:restore` puts it back. The tools the assistant used are listed under each answer, and the seq chips open the ledger at that entry.
+
+### Use the read-only tools from Kiro (MCP)
+
+Add this to `.kiro/settings/mcp.json` (local seeded database, the `ghost_readonly` role only):
+
+```json
+{
+  "mcpServers": {
+    "ghost-ledger": {
+      "command": "npx",
+      "args": ["tsx", "scripts/mcp-server.ts"],
+      "env": {
+        "READONLY_DATABASE_URL": "postgresql://ghost_readonly:local-ro-password-00001@127.0.0.1:56322/postgres",
+        "MCP_GROUP_CODE": "TUBEERA"
+      },
+      "disabled": false,
+      "autoApprove": ["get_group_summary", "list_overdue_loans", "list_pending_requests", "get_member_statement", "verify_chain", "flag_anomalies"]
+    }
+  }
+}
+```
 
 ## 9. Stop local Supabase
 

@@ -86,11 +86,32 @@ test("5. the chain is verified, then a tamper makes it fail at that seq, and a r
   await expect(page.getByText("Chain verified")).toBeVisible();
 });
 
+test("5b. the assistant reports the tamper at seq N, then the restored chain", async ({ page }) => {
+  await signIn(page, "tubeera.chair@example.com");
+  const out = npmRun("demo:tamper");
+  const seq = /seq (\d+)/.exec(out)?.[1];
+  await page.goto("/dashboard");
+  await page.getByRole("button", { name: "Is the ledger intact?" }).click();
+  await expect(page.getByTestId("agent-answer").first()).toContainText(`The chain fails at seq ${seq}`);
+  await expect(page.getByTestId("agent-answer").first()).toContainText("Checked the hash chain");
+  npmRun("demo:restore");
+  await page.getByRole("button", { name: "Is the ledger intact?" }).click();
+  await expect(page.getByTestId("agent-answer").first()).toContainText("The ledger is intact");
+});
+
 test("6. the planted anomalies are listed", async ({ page }) => {
   await signIn(page, "tubeera.chair@example.com");
   await page.goto("/dashboard/alerts");
   await expect(page.getByText("Loan paid out with no approval")).toBeVisible();
   await expect(page.getByText("Loan above the savings limit")).toBeVisible();
+  // The assistant explains both, in plain language, with the seq.
+  await page.goto("/dashboard");
+  await page.getByRole("button", { name: "Anything suspicious?" }).click();
+  const answer = page.getByTestId("agent-answer").first();
+  await expect(answer).toContainText("2 things look suspicious");
+  await expect(answer).toContainText("A loan was paid out with no leader approval");
+  await expect(answer).toContainText(/\(seq \d+\)/);
+  await expect(answer.getByRole("link", { name: /^#\d+$/ })).toHaveCount(1);
 });
 
 test("7. a leader registers a member and reverses an entry", async ({ page }) => {

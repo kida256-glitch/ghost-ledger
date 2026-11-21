@@ -1,4 +1,4 @@
-import { AgentPanel } from "../../components/AgentPanel";
+import { AgentChat } from "../../components/AgentChat";
 import { ChainStatus } from "../../components/ChainStatus";
 import { PageTitle, Stat } from "../../components/ui";
 import { Money } from "../../components/ui/money";
@@ -42,7 +42,7 @@ export default async function OverviewPage() {
           {v.highAlerts}
         </Stat>
       </div>
-      <AgentPanel />
+      <AgentChat />
     </div>
   );
 }
