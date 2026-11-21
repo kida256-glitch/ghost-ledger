@@ -8,7 +8,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - `src/mcp/tools.ts` and `src/mcp/schemas.ts`; the ESLint rule for `src/mcp/**`, `src/agent/**` and `scripts/mcp-server.ts`.
   - Tests: **PA1** `A8.1 A1.2 A1.4 tool results validate and contain only the bound group`; **PA3** `A8.3 the tool set is read-only` (a source test, plus a lint fixture test that a writer import is an error); examples for each tool on the seed (2 anomalies with their seqs; verify after `tamper`; a statement by id, phone and name; bad input gives a typed error).
 
-- [ ] 2. MCP stdio server (A2; design §3)
+- [x] 2. MCP stdio server (A2; design §3)
   - Check the current `@modelcontextprotocol/sdk` docs. Add `scripts/mcp-server.ts`, replace the stub `npm run mcp` script, and give the user the `.kiro/settings/mcp.json` content.
   - Tests: an in-memory client and server pair lists 6 tools and calls `verify_chain` on PGlite; stdout carries protocol only.
   - Then: once the user has added the config, call the tools from Kiro against the local seeded database and record the result in KIRO_USAGE.md (A7.3).

@@ -21,6 +21,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "build": "next build",
     "mutation:check": "node scripts/mutation-check.mjs",
+    "mcp": "tsx scripts/mcp-server.ts",
     "db:roles-login": "tsx scripts/db-roles-login.ts",
     "db:deploy": "tsx scripts/deploy-db.ts",
     "hosted:check": "tsx scripts/hosted-check.ts",
@@ -32,6 +33,7 @@
     "demo:reset": "tsx scripts/demo-reset.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@node-rs/argon2": "^2.2.2",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.2",
