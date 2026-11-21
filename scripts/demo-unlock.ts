@@ -8,7 +8,7 @@ import { phoneHash } from "../src/db/ussd-repo";
 import { adminEnv } from "../src/lib/env";
 import { SEED_GROUP_CODE } from "../src/seed/build-seed";
 
-export type UnlockOutcome = { ok: true; credentials: number; rateLimits: number } | { ok: false; reason: string };
+export type UnlockOutcome = { ok: true; credentials: number; rateLimits: number; agentUsage: number } | { ok: false; reason: string };
 
 export async function demoUnlock(db: Db, groupCode: string = SEED_GROUP_CODE): Promise<UnlockOutcome> {
   const group = await db.query<{ id: string }>("select id::text as id from groups where code = $1", [groupCode]);
@@ -25,7 +25,8 @@ export async function demoUnlock(db: Db, groupCode: string = SEED_GROUP_CODE): P
       [groupId],
     );
     const limits = await tx.query("delete from ussd_rate_limits where phone_hash = any($1::text[]) returning phone_hash", [hashes]);
-    return { ok: true as const, credentials: creds.rows.length, rateLimits: limits.rows.length };
+    const usage = await tx.query("delete from agent_usage where member_id in (select id from members where group_id = $1) returning member_id", [groupId]);
+    return { ok: true as const, credentials: creds.rows.length, rateLimits: limits.rows.length, agentUsage: usage.rows.length };
   });
 }
 
@@ -39,7 +40,7 @@ async function main() {
   const pool = createPool(env.ADMIN_DATABASE_URL, { caCert: env.DATABASE_CA_CERT });
   try {
     const out = await demoUnlock(fromPgPool(pool), parseGroupArg(process.argv.slice(2)));
-    if (out.ok) console.log(`demo:unlock: reset ${out.credentials} locked or failing PIN(s), cleared ${out.rateLimits} rate-limit row(s)`);
+    if (out.ok) console.log(`demo:unlock: reset ${out.credentials} locked or failing PIN(s), cleared ${out.rateLimits} rate-limit row(s) and ${out.agentUsage} agent usage row(s)`);
     else {
       console.error(`demo:unlock refused: ${out.reason}`);
       process.exitCode = 1;

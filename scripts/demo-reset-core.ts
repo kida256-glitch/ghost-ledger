@@ -58,6 +58,7 @@ export async function demoReset(db: Db, env: Record<string, string | undefined>,
     const entries = await tx.query("delete from ledger_entries where group_id = $1 returning id", [groupId]);
     await tx.query("delete from member_credentials where member_id in (select id from members where group_id = $1)", [groupId]);
     await tx.query("delete from ussd_rate_limits where phone_hash = any($1::text[])", [phones]);
+    await tx.query("delete from agent_usage where member_id in (select id from members where group_id = $1)", [groupId]);
     const removed = await tx.query("delete from members where group_id = $1 returning id", [groupId]);
     await tx.query("delete from groups where id = $1", [groupId]);
     for (const [table, trigger] of GUARD_TRIGGERS) await tx.query(`alter table ${table} enable trigger ${trigger}`);

@@ -30,6 +30,16 @@ export const envSchema = z.object({
     .transform(Number)
     .refine((n) => n >= 1 && n <= 10_000, "must be from 1 to 10000")
     .optional(),
+  /** ai-agent-mcp A4.1: "mock" (default, no key) or "gemini". */
+  AGENT_PROVIDER: z.enum(["mock", "gemini"]).optional(),
+  /** Gemini API key. Server only; never logged. */
+  GEMINI_API_KEY: z.string().min(10, "must be a Gemini API key").optional(),
+  /** Model id for the real provider, picked with npm run agent:smoke. */
+  AGENT_MODEL: z.string().regex(/^[A-Za-z0-9._\-/:]{1,100}$/, "must be a model id").optional(),
+  /** Agent questions per leader per Kampala day (A3.3). Default 30. */
+  AGENT_DAILY_LIMIT: z.string().regex(/^\d{1,4}$/, "must be a whole number").transform(Number).refine((n) => n >= 1 && n <= 1_000, "must be from 1 to 1000").optional(),
+  /** Output token cap per answer (A3.2). Default 600. */
+  AGENT_MAX_OUTPUT_TOKENS: z.string().regex(/^\d{2,4}$/, "must be a whole number").transform(Number).refine((n) => n >= 50 && n <= 4_000, "must be from 50 to 4000").optional(),
   /** If set, the login page shows the demo leaders' password (dashboard-simulator D1.9). */
   DEMO_LEADER_PASSWORD_HINT: z.string().min(1).max(100).optional(),
   /** Must never be set where the app runs (README). Read only by the seed script. */

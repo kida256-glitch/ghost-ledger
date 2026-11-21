@@ -43,13 +43,18 @@ export const loadGroupData = cache(async (groupId: string): Promise<GroupData> =
 });
 
 let writePool: pg.Pool | undefined;
-/** Writes run as ghost_app (DATABASE_URL), one connection per instance. */
-export function writerDb(): LedgerWriter {
+/** The ghost_app connection (DATABASE_URL), one per instance. */
+export function appDb() {
   if (writePool === undefined) {
     const env = appEnv();
     writePool = createRuntimePool(env.DATABASE_URL, env.DATABASE_CA_CERT);
   }
-  return createLedgerWriter(fromPgPool(writePool), { clock: () => new Date(), newId: randomUUID });
+  return fromPgPool(writePool);
+}
+
+/** Writes run as ghost_app. */
+export function writerDb(): LedgerWriter {
+  return createLedgerWriter(appDb(), { clock: () => new Date(), newId: randomUUID });
 }
 
 /** For server actions: every call checks the session itself (D1.4). */

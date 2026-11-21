@@ -26,6 +26,12 @@ export const MATRIX: Record<string, Record<string, Expected>> = {
     ghost_readonly: NONE,
     ...API_ROLES,
   },
+  // ai-agent-mcp design §6: the agent's daily counter, like the USSD rate limits.
+  agent_usage: {
+    ghost_app: { table: ["SELECT", "INSERT"], updateColumns: ["messages"] },
+    ghost_readonly: NONE,
+    ...API_ROLES,
+  },
   // ussd-engine design §6: updated in place, never read by the read-only role.
   ussd_rate_limits: {
     ghost_app: { table: ["SELECT", "INSERT"], updateColumns: ["window_start", "hits"] },

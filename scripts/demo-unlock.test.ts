@@ -80,7 +80,7 @@ describe("ussd task 8: demo:unlock (U17.2)", () => {
     await pg.query("insert into ussd_rate_limits values ($1, now(), 31)", [phoneHash(ALICE.phone)]);
 
     // Rate-limit rows: the chair's and Waiswa Henry's (from the test above).
-    expect(await demoUnlock(fromPglite(pg))).toEqual({ ok: true, credentials: 1, rateLimits: 2 });
+    expect(await demoUnlock(fromPglite(pg))).toEqual({ ok: true, credentials: 1, rateLimits: 2, agentUsage: 0 });
     expect(await dial(phone, DEMO_PINS[chair?.id ?? ""] ?? "", "after")).toMatch(/^CON 1 Save\n/);
 
     const other = await pg.query<{ failed_attempts: number }>("select failed_attempts from member_credentials where member_id = $1", [ALICE.id]);
@@ -88,7 +88,7 @@ describe("ussd task 8: demo:unlock (U17.2)", () => {
     const otherLimit = await pg.query("select 1 from ussd_rate_limits where phone_hash = $1", [phoneHash(ALICE.phone)]);
     expect(otherLimit.rows).toHaveLength(1);
     // Nothing left to clear for TUBEERA except the rate-limit row the last dial created.
-    expect(await demoUnlock(fromPglite(pg))).toEqual({ ok: true, credentials: 0, rateLimits: 1 });
+    expect(await demoUnlock(fromPglite(pg))).toEqual({ ok: true, credentials: 0, rateLimits: 1, agentUsage: 0 });
   }, 60_000);
 
   it("refuses an unknown group, changing nothing; --group picks the group", async () => {

@@ -17,7 +17,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - `src/agent/{provider,mock,agent,prompt}.ts`.
   - Tests: keyword routing; templated answers on the seed (the anomalies with their seqs; "failed at seq N" after a tamper; "I can't tell from the ledger" for an off-topic question); the injection fixture (A5.3); the round cap; a fake provider that asks for an unknown tool or bad arguments gets a tool error and the loop still ends.
 
-- [ ] 4. Usage cap and `POST /api/agent` (A3; design §6, §7)
+- [x] 4. Usage cap and `POST /api/agent` (A3; design §6, §7)
   - Migration `agent_usage` and the matrix entry; `src/db/agent-usage.ts`; the route and its handler; env parsing.
   - Tests: **PA2** `A8.2 /api/agent refuses non-leaders and never throws`; a provider that never answers hits the 25 s deadline (fake timers) and the reply is the mock answer marked offline; the cap on PGlite (31st message refused; a new Kampala day starts at 0); handler status codes; logs contain only fixed words.
 

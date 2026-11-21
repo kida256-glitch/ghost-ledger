@@ -33,7 +33,7 @@ describe("task 16: schema (R13.1, R13.4, R3.8, R7.8)", () => {
     const r = await db.query<{ table_name: string }>(
       "select table_name from information_schema.tables where table_schema = 'public' order by table_name",
     );
-    expect(r.rows.map((x) => x.table_name)).toEqual(["groups", "ledger_entries", "member_credentials", "members", "ussd_rate_limits"]);
+    expect(r.rows.map((x) => x.table_name)).toEqual(["agent_usage", "groups", "ledger_entries", "member_credentials", "members", "ussd_rate_limits"]);
   });
 
   it("has the uniques: (group_id, seq), (group_id, idempotency_key) where present, phone", async () => {
