@@ -104,6 +104,10 @@ npm run test:e2e
 
 `npm run test:integration` connects to `INTEGRATION_DATABASE_URL`, which defaults to this project's local Supabase database at `postgresql://postgres:postgres@127.0.0.1:56322/postgres`. The project uses ports 56320–56329 (see `supabase/config.toml`) so it can run next to other local Supabase projects on the default 543xx ports. The tests give `ghost_app` a random password for the run, then check 20 parallel appends over 10 connections and the full privilege matrix (including `anon`, `authenticated` and `service_role`). It refuses to run against any host other than `127.0.0.1` or `localhost`. Run `npx supabase db reset` before each run, because test entries can't be deleted from the append-only ledger.
 
+## Originality
+
+All code in this repository was written for Kiroween 2026, starting from an empty repository (see the git history from the first commit). No pre-existing project code was reused. It uses frameworks and libraries installed from npm (Next.js, React, Tailwind CSS, zod, node-postgres, Supabase clients, the MCP SDK, @node-rs/argon2, and for tests Vitest, fast-check, PGlite and Playwright), as listed in `package.json`.
+
 ## Roadmap
 - **Checkpoints.** Let a leader save the chain head (seq and hash) and copy it into the paper record book, so deleting the newest entries can be detected later. A hash chain alone can't detect truncation of its tail.
 
@@ -204,6 +208,10 @@ npm run test:integration
 ```
 
 `npm run test:integration` connects to `INTEGRATION_DATABASE_URL`, which defaults to this project's local Supabase database at `postgresql://postgres:postgres@127.0.0.1:56322/postgres`. The project uses ports 56320–56329 (see `supabase/config.toml`) so it can run next to other local Supabase projects on the default 543xx ports. The tests give `ghost_app` a random password for the run, then check 20 parallel appends over 10 connections and the full privilege matrix (including `anon`, `authenticated` and `service_role`). It refuses to run against any host other than `127.0.0.1` or `localhost`. Run `npx supabase db reset` before each run, because test entries can't be deleted from the append-only ledger.
+
+## Originality
+
+All code in this repository was written for Kiroween 2026, starting from an empty repository (see the git history from the first commit). No pre-existing project code was reused. It uses frameworks and libraries installed from npm (Next.js, React, Tailwind CSS, zod, node-postgres, Supabase clients, the MCP SDK, @node-rs/argon2, and for tests Vitest, fast-check, PGlite and Playwright), as listed in `package.json`.
 
 ## Roadmap
 - **Checkpoints.** Let a leader save the chain head (seq and hash) and copy it into the paper record book, so deleting the newest entries can be detected later. A hash chain alone can't detect truncation of its tail.
