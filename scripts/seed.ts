@@ -19,6 +19,7 @@ import { kampalaDate } from "../src/domain";
 import { createPool, fromPgPool, type Db } from "../src/db/db";
 import { INSERT_ENTRY_SQL, INSERT_GROUP_SQL, INSERT_MEMBER_SQL, entryParams, groupParams, memberParams } from "../src/db/rows";
 import { SEED_GROUP_CODE, buildSeed } from "../src/seed/build-seed";
+import { DEMO_ACCOUNTS } from "../src/seed/demo-accounts";
 import { DEMO_PINS } from "../src/seed/demo-pins";
 import { argon2PinHasher, type PinHasher } from "../src/ussd/pin";
 
@@ -28,10 +29,7 @@ export interface AuthAdmin {
   deleteUser(id: string): Promise<void>;
 }
 
-export const DEMO_ACCOUNTS = [
-  { email: "tubeera.chair@example.com", role: "chair" },
-  { email: "tubeera.treasurer@example.com", role: "treasurer" },
-] as const;
+export { DEMO_ACCOUNTS };
 
 const envSchema = z.object({
   ADMIN_DATABASE_URL: z.string().url().refine((u) => /^postgres(ql)?:\/\//.test(u), "must be a postgres:// URL"),

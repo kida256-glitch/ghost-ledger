@@ -22,7 +22,9 @@ Which connection each part uses:
 | Agent and MCP server | `READONLY_DATABASE_URL` | `ghost_readonly` (SELECT only) |
 | Migrations, `db:roles-login`, `db:seed`, `db:deploy`, `hosted:check`, demo scripts | `ADMIN_DATABASE_URL` | table owner, direct connection or session pooler |
 
-Every non-local connection uses TLS that verifies the Supabase CA and hostname, from `DATABASE_CA_CERT`; without it, the connection is refused. Vercel gets only `DATABASE_URL`, `READONLY_DATABASE_URL` and `DATABASE_CA_CERT`.
+Every non-local connection uses TLS that verifies the Supabase CA and hostname, from `DATABASE_CA_CERT`; without it, the connection is refused. Vercel gets `DATABASE_URL`, `READONLY_DATABASE_URL`, `DATABASE_CA_CERT`, and for leader sign-in `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and (optionally) `DEMO_LEADER_PASSWORD_HINT`.
+
+**Leader sign-in** uses Supabase Auth with email and password, entirely on the server (`@supabase/ssr`, HTTP-only cookies refreshed by `src/middleware.ts`). The publishable key is server-only and maps to the `anon` role, which has no grants on any table. **Never put the service-role key on Vercel**: the app refuses to start if it is set. **Turn off new-user sign-ups** in Supabase (*Authentication → Sign In / Providers → Allow new users to sign up*); locally `supabase/config.toml` already has `enable_signup = false`. The two demo leaders are created by `db:seed` through the admin API, which works with sign-ups off.
 
 `npm run db:seed` inserts every group, member and ledger row through `ADMIN_DATABASE_URL`. It also needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`, but only to create the two demo leader logins through the Supabase Auth admin API. Nothing else uses that key.
 

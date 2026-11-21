@@ -2,7 +2,7 @@
 
 Every task ends with the Definition of Done (`npm run typecheck && npm run lint && npm test && npm run build`), a commit, and an update to `KIRO_USAGE.md`. Property titles name the requirement ids they cover. There are no mutation checks for this spec.
 
-- [ ] 1. Auth, shell and the group overview (D1, D2, D3, D11; design §3, §6, §7)
+- [x] 1. Auth, shell and the group overview (D1, D2, D3, D11; design §3, §6, §7)
   - Add `@supabase/ssr`. Add `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` and `DEMO_LEADER_PASSWORD_HINT` to `env.ts` and `.env.example`. Add `src/lib/auth/supabase-server.ts`, `middleware.ts`, `requireLeader`, and the sign-in and sign-out actions. Set `enable_signup = false`.
   - Add the design tokens and components, the dashboard layout (tab bar and rail, chain banner, demo notice), the landing and login pages, and the overview page with the agent placeholder.
   - Update the README and the DEMO.md checklist: publishable key allowed, service-role key refused, sign-ups off.

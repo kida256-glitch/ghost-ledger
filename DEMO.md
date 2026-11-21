@@ -168,13 +168,17 @@ Region: Supabase **Central EU (Frankfurt), `eu-central-1`**, chosen as a *specif
    - *Connect* → *Session pooler* URI (port 5432), for `ADMIN_DATABASE_URL`. The direct connection (`db.<ref>.supabase.co`) also works if your network has IPv6.
    - *Connect* → *Transaction pooler* URI (port 6543). You'll swap its user name for `ghost_app.<ref>` and `ghost_readonly.<ref>`.
    - *Project Settings* → *Database* → *SSL Configuration* → *Download certificate* (`prod-ca-2021.crt`). Save it in the repo root; `.gitignore` ignores `*.crt`.
-   - *Project Settings* → *API Keys*: the project URL and the `service_role` / secret key, for the seed only.
+   - *Project Settings* → *API Keys*: the project URL, the **publishable** key (for Vercel), and the `service_role` / secret key (for the seed only, never Vercel).
+   - *Authentication* → *Sign In / Providers*: turn **off** "Allow new users to sign up". The seed creates the two leaders through the admin API, which still works.
 3. **Run the database setup** from your machine (next section).
-4. **Vercel: import the repo.** [vercel.com/new](https://vercel.com/new) → import the GitHub repo. Framework: Next.js (auto-detected). Before the first deploy, open *Environment Variables* and add exactly these three, for Production (and Preview if you want previews to work):
+4. **Vercel: import the repo.** [vercel.com/new](https://vercel.com/new) → import the GitHub repo. Framework: Next.js (auto-detected). Before the first deploy, open *Environment Variables* and add exactly these six, for Production (and Preview if you want previews to work):
    - `DATABASE_URL` = the transaction-pooler URI with user `ghost_app.<ref>` and the `APP_DB_PASSWORD` you chose;
    - `READONLY_DATABASE_URL` = the same URI with user `ghost_readonly.<ref>` and the `READONLY_DB_PASSWORD`;
-   - `DATABASE_CA_CERT` = the full text of `prod-ca-2021.crt`, including the `BEGIN`/`END` lines.
-   No Supabase key of any kind, and no `ADMIN_DATABASE_URL`. The app refuses to start if `SUPABASE_SERVICE_ROLE_KEY` is set.
+   - `DATABASE_CA_CERT` = the full text of `prod-ca-2021.crt`, including the `BEGIN`/`END` lines;
+   - `SUPABASE_URL` = `https://<ref>.supabase.co`;
+   - `SUPABASE_PUBLISHABLE_KEY` = the publishable key (server-only; it maps to `anon`, which can read no table);
+   - `DEMO_LEADER_PASSWORD_HINT` = the same `DEMO_LEADER_PASSWORD` you used for the seed, so the login page shows it to judges.
+   Never the service-role key, and no `ADMIN_DATABASE_URL`. The app refuses to start if `SUPABASE_SERVICE_ROLE_KEY` is set.
 5. **Vercel: Node version.** *Settings* → *Build and Deployment* → *Node.js Version* → **24.x**. Then deploy (or redeploy).
 6. **Check it.** Open `https://<your-deployment>.vercel.app/api/health`: you should see `"status":"verified"`, `"dbRole":"ghost_readonly"`, `"region":"fra1"`. Then run the hosted check below.
 

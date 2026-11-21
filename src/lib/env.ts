@@ -19,6 +19,12 @@ export const envSchema = z.object({
   ADMIN_DATABASE_URL: optionalUrl,
   /** PEM text of the Supabase CA; required for any non-local database (design §14.2). Public, not a secret. */
   DATABASE_CA_CERT: z.string().includes("BEGIN CERTIFICATE", { message: "must be a PEM certificate" }).optional(),
+  /** Supabase project URL, for Supabase Auth (dashboard sign-in, server only). */
+  SUPABASE_URL: z.string().url().refine((u) => /^https?:\/\//.test(u), "must be an http(s) URL").optional(),
+  /** Publishable (anon) key, server only: anon has no table grants (ledger-core R13.9). */
+  SUPABASE_PUBLISHABLE_KEY: z.string().min(20, "must be the project's publishable key").optional(),
+  /** If set, the login page shows the demo leaders' password (dashboard-simulator D1.9). */
+  DEMO_LEADER_PASSWORD_HINT: z.string().min(1).max(100).optional(),
   /** Must never be set where the app runs (README). Read only by the seed script. */
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
 });
@@ -71,4 +77,13 @@ export function adminEnv(source: Record<string, string | undefined> = process.en
   const env = parseEnv(source);
   if (env.ADMIN_DATABASE_URL === undefined) throw new EnvError("ADMIN_DATABASE_URL is required");
   return { ...env, ADMIN_DATABASE_URL: env.ADMIN_DATABASE_URL };
+}
+
+/** Dashboard auth's view: the Supabase URL and publishable key, and never the service-role key (D1.7). */
+export function authEnv(source: Record<string, string | undefined> = process.env): Env & { SUPABASE_URL: string; SUPABASE_PUBLISHABLE_KEY: string } {
+  const env = parseEnv(source);
+  if (env.SUPABASE_SERVICE_ROLE_KEY !== undefined) throw new EnvError(SERVICE_KEY_REFUSAL);
+  if (env.SUPABASE_URL === undefined) throw new EnvError("SUPABASE_URL is required");
+  if (env.SUPABASE_PUBLISHABLE_KEY === undefined) throw new EnvError("SUPABASE_PUBLISHABLE_KEY is required");
+  return { ...env, SUPABASE_URL: env.SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY: env.SUPABASE_PUBLISHABLE_KEY };
 }

@@ -564,7 +564,7 @@ Supabase has no African region. The project uses the specific region **Central E
 - `sslmode`, `sslrootcert`, `sslcert`, `sslkey` and `uselibpqcompat` are removed from the URL, because `pg` lets URL parameters override the `ssl` object.
 - No named prepared statements (§5.1, unchanged).
 
-No Supabase key of any kind is set on Vercel. `appEnv()` and `readonlyEnv()` both refuse to start if `SUPABASE_SERVICE_ROLE_KEY` is present.
+No service-role key is set on Vercel. `appEnv()`, `readonlyEnv()` and `authEnv()` all refuse to start if `SUPABASE_SERVICE_ROLE_KEY` is present. (Amended by dashboard-simulator design §3: the publishable key is allowed, server-only, for Supabase Auth.)
 
 ### 14.3 `GET /api/health`
 
