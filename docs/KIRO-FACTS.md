@@ -8,13 +8,13 @@ There are 4 specs in `.kiro/specs/`, each with `requirements.md` (EARS), `design
 
 | Spec | Requirements | Acceptance criteria | Tasks (done) |
 |------|--------------|---------------------|--------------|
-| ledger-core | 17 (R1–R17; R17 checkpoints was dropped at a review) | 130 | 29 (28) |
+| ledger-core | 17 (R1–R17; R17 checkpoints was dropped at a review) | 130 | 30 (29) |
 | ussd-engine | 18 (U1–U18) | 58 | 9 (9) |
 | dashboard-simulator | 16 (D1–D16) | 54 | 10 (10) |
 | ai-agent-mcp | 8 (A1–A8) | 28 | 6 (6) |
-| **Total** | **59** | **270** | **54 (53)** |
+| **Total** | **59** | **270** | **55 (54)** |
 
-- **ledger-core:** the one open task is task 30, the hosted deployment, which waits on the user's Supabase and Vercel setup. The tasks list also includes two inserted tasks, 15a and 18a, which came from reviews; the checkpoint tasks 27–29 were dropped with R17.
+- **ledger-core:** the one open task is 30b, running the deployment on the hosted project. It needs the user's Supabase and Vercel accounts, so the agent can't do it. Task 30 (the code, scripts and docs for it) is done; it was split in two on 2026-11-21 so the count says which part is open. The tasks list also includes two inserted tasks, 15a and 18a, which came from reviews; the checkpoint tasks 27–29 were dropped with R17.
 - **Spec-first changes:** these went into the specs first, then into code:
   - request-and-confirm deposits;
   - the money-in rule R9.9;

@@ -289,7 +289,7 @@ R17 was dropped at the task 18 review, together with tasks 27?29. See requiremen
 
 ## Phase 6: Deployment skeleton
 
-- [ ] 30. Hosted Supabase and Vercel, proven end to end (design §14)
+- [x] 30. Hosted Supabase and Vercel: the code and scripts (design §14)
   - Contents:
     - `createPool` with verify-full TLS for non-local hosts and `DATABASE_CA_CERT`; every script and the runtime use it;
     - `readonlyEnv()` also refuses `SUPABASE_SERVICE_ROLE_KEY`;
@@ -303,5 +303,8 @@ R17 was dropped at the task 18 review, together with tasks 27?29. See requiremen
     - the route maps each case to its HTTP status and never echoes error details;
     - `deploy-db` env checks (names variables, never values; refuses local hosts);
     - `hosted-check` logic against PGlite with a fake `fetch`: all PASS on a good setup, FAIL lines for a wrong role, wrong region and a broken matrix.
-  - Status: the agent's part is done and was run against local Supabase (health verified, then failed at seq 11 after `demo:tamper`; `hosted:check` passed the matrix and 10 concurrent appends, and failed only the region and pooler-port checks, as expected locally). Waiting on the user steps.
-  - Done when: the Definition of Done passes and the scripts work locally. **User steps** (the agent can't click through dashboards): follow the DEMO.md checklist, then `npm run hosted:check -- --url <deployment URL>` prints all PASS and `<deployment URL>/api/health` shows `"status":"verified"`.
+  - Done: everything above is built and tested, and was run against local Supabase (health verified, then failed at seq 11 after `demo:tamper`; `hosted:check` passed the matrix and 10 concurrent appends, and failed only the region and pooler-port checks, as expected off Vercel).
+
+- [ ] 30b. Run it on the hosted project (user step; not done)
+  - The user follows the DEMO.md "Hosted deployment" checklist (create the Supabase project, `npm run db:deploy`, import the repo into Vercel, set the environment variables), then runs `npm run hosted:check -- --url <deployment URL>`.
+  - Done when: all `hosted:check` lines PASS and `<deployment URL>/api/health` shows `"status":"verified"`. The agent can't do this: it needs the user's Supabase and Vercel accounts.
