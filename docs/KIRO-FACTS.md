@@ -145,6 +145,22 @@ These are guards broken on purpose to confirm a test fails, separate from the mu
 - **Corrupted README setup.** Running the README's setup block verbatim from a fresh clone found it had been cut by a text replacement (`$'` in a JavaScript replacement string). The README was rewritten and the block re-run verbatim.
 - **USSD hook running 0 tests:** see Hooks.
 
+## Custom agent: submission-checker
+
+- **What it is:** `.kiro/agents/submission-checker.md`, a workspace custom agent (Markdown with YAML front matter). Its tools are `read` and `shell` only, with no write tools and no sub-agents. Its permission rules deny `fs_write` and allow only `node scripts/audit/submission-check.mjs*` and read-only `git` commands.
+- **What it runs:** `scripts/audit/submission-check.mjs` does the work. It clones the GitHub repo into a temp folder and runs the README's setup block verbatim, including the dev server and page checks. It also checks links and anchors in README.md and DEMO.md, scans every commit and tracked file for secrets, checks that `.kiro/settings` has no hosted connection string, and recounts the numbers in this file (running `npm test` in the clone).
+- **Writes nothing in the workspace.** It does reset and re-seed the local demo database, because the README tells a judge to.
+- **How it was created** (2026-11-21, in the Kiro IDE):
+  1. Kiro's `introspect` sub-agent looked up the current custom-agent docs: location, format, the `tools` and `permissions` fields, and how to run one.
+  2. Kiro's `custom-agent-creator` sub-agent wrote the file.
+  3. Its `permissions` block had made-up key names, because that sub-agent had no access to the docs. It was corrected by hand to the documented `rules` format (`capability`, `match`, `effect`).
+- **Where it was used:** the Kiro IDE, invoked as a sub-agent from the main chat session. A newly created workspace agent could be invoked in the same session, without restarting Kiro. The docs don't say whether this works.
+- **What it found:**
+  - **Run 1** (commit 1cfab72): 7 of 7 checks passed, in 468 s. Reviewing the run then showed that the "step 4" page checks were ambiguous. An already-running demo server was on port 3000, so the clone's dev server may not have been the one answering.
+  - **The fix** (a bug fix in the check script): it now fails step 4 while port 3000 is in use.
+  - **Run 2** (commit 793b721, port free): 7 of 7 checks passed, in 466 s. Steps 1–3 seeded 12 members and 492 entries. Step 4 got / 200, /simulator 200, /login 200, and /api/health 200 "verified". 16 links checked. The secret scan covered 82 commits and 242 tracked files, with no findings. Every KIRO-FACTS number matched.
+  - **One warning, not a check:** `npm install` prints that esbuild's postinstall script isn't allowed. The README already says this is expected.
+
 ## Test totals
 
 | Suite | Count |
@@ -157,11 +173,10 @@ The repository has **80 commits**, including the one that added this sheet (2026
 
 ## What was not used
 
-- **Custom agents:** none were created.
 - **Kiro Powers:** none were used.
 - **Kiro Crew:** not used.
 - **Kiro Web, Kiro CLI:** not used. All work was in the Kiro IDE.
-- **Sub-agents:** Kiro's sub-agents (validation, review, spec task execution) were not used. The agent ran every task itself, with the user reviewing at checkpoints.
+- **Sub-agents:** Kiro's sub-agents were not used for building the specs; the agent ran every task itself, with the user reviewing at checkpoints. After the feature freeze, three sub-agents were used once each: `introspect` (custom-agent docs), `custom-agent-creator`, and the project's own `submission-checker`.
 - **MCP from Kiro against this project's own server:** not done yet (see MCP).
 - **Hook triggers:** only `PostFileSave`. No other trigger types were used.
 - **Credits:** Kiro shows no credit counter to the agent, so credit use per task was not recorded.
