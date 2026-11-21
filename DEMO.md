@@ -282,6 +282,44 @@ Region: Supabase **Central EU (Frankfurt), `eu-central-1`**, chosen as a *specif
 5. **Vercel: Node version.** *Settings* → *Build and Deployment* → *Node.js Version* → **24.x**. Then deploy (or redeploy).
 6. **Check it.** Open `https://<your-deployment>.vercel.app/api/health`: you should see `"status":"verified"`, `"dbRole":"ghost_readonly"`, `"region":"fra1"`. Then run the hosted check below.
 
+### Environment variables (Vercel)
+
+`vercel.json` pins functions to `fra1` (next to Supabase `eu-central-1`) and adds one daily cron, `GET /api/health` at 06:00 UTC, which keeps the free Supabase project from pausing (see README, "Keep-alive"). Node.js comes from `engines.node` (24.x) in `package.json`.
+
+Every variable the code reads, and where it belongs:
+
+| Variable | In Vercel? | Required? | What it is |
+|----------|-----------|-----------|------------|
+| `DATABASE_URL` | yes | required | `ghost_app` through the transaction pooler (port 6543) |
+| `READONLY_DATABASE_URL` | yes | required | `ghost_readonly` through the transaction pooler (port 6543) |
+| `DATABASE_CA_CERT` | yes | required | full PEM text of `prod-ca-2021.crt` (public, not secret) |
+| `SUPABASE_URL` | yes | required | `https://<ref>.supabase.co`, for leader sign-in |
+| `SUPABASE_PUBLISHABLE_KEY` | yes | required | publishable key (server only; maps to `anon`, which reads no table) |
+| `DEMO_LEADER_PASSWORD_HINT` | yes | optional (recommended) | shows the demo password on the login page |
+| `USSD_RATE_LIMIT_MAX` | yes | optional | USSD requests per phone per 5 minutes (default 30) |
+| `AGENT_PROVIDER` | yes | optional | `mock` (default) or `gemini` |
+| `GEMINI_API_KEY` | yes, only with `gemini` | optional | mark as Sensitive in Vercel |
+| `AGENT_MODEL` | yes, only with `gemini` | optional | the id `npm run agent:smoke` printed |
+| `AGENT_DAILY_LIMIT` | yes | optional | agent questions per leader per day (default 30) |
+| `AGENT_MAX_OUTPUT_TOKENS` | yes | optional | answer length cap (default 600) |
+| `VERCEL`, `VERCEL_REGION`, `NODE_ENV` | set by Vercel | n/a | don't add them yourself |
+| `SUPABASE_SERVICE_ROLE_KEY` | **never** | n/a | seed only, in your shell. The app refuses to start if it is set |
+| `ADMIN_DATABASE_URL` | **never** | n/a | table owner: migrations, seed and demo scripts from your machine only |
+| `APP_DB_PASSWORD`, `READONLY_DB_PASSWORD`, `DEMO_LEADER_PASSWORD` | **never** | n/a | used once by `db:deploy` in your shell |
+| `ALLOW_TAMPER_DEMO`, `ALLOW_DEMO_RESET`, `ALLOW_HOSTED_CHECK` | **never** | n/a | safety flags for scripts on your machine |
+| `INTEGRATION_DATABASE_URL`, `MCP_GROUP_CODE`, `GHOST_LEDGER_HOOK_*` | no | n/a | local tests, the MCP server and the Kiro hook helper |
+
+To copy into Vercel (*Settings → Environment Variables*, paste into the first Key field; Vercel splits the lines). Replace every `<…>`. Add `DATABASE_CA_CERT` separately, because its value spans several lines:
+
+```
+DATABASE_URL=postgresql://ghost_app.<ref>:<APP_DB_PASSWORD>@<host>.pooler.supabase.com:6543/postgres
+READONLY_DATABASE_URL=postgresql://ghost_readonly.<ref>:<READONLY_DB_PASSWORD>@<host>.pooler.supabase.com:6543/postgres
+SUPABASE_URL=https://<ref>.supabase.co
+SUPABASE_PUBLISHABLE_KEY=<publishable key>
+DEMO_LEADER_PASSWORD_HINT=<the DEMO_LEADER_PASSWORD you seeded with>
+AGENT_PROVIDER=mock
+```
+
 ### Database setup (step 3), PowerShell
 
 ```powershell
