@@ -31,7 +31,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - Status banner with the full head hash, pagination, entry expand, the Reverse sheet, and the alerts list linking to entries.
   - Tests: pagination and ordering; the banner after `demo:tamper` on PGlite shows "failed at seq N"; alerts sorted by severity and then time.
 
-- [ ] 7. Phone simulator and the configurable rate limit (D12, D15.1; design §8, §8a)
+- [x] 7. Phone simulator and the configurable rate limit (D12, D15.1; design §8, §8a)
   - `/simulator` with `Phone` and the demo panel, `USSD_RATE_LIMIT_MAX`, and `isRateLimitedReply` with its friendly message.
   - Tests: request builder, END starting a new session, PIN masking, the demo panel listing 12 members with Waiswa Henry marked "no PIN", the rate limit read from the env (default 30, bad values refused), and the friendly message for an English and a Luganda rate-limit reply.
 

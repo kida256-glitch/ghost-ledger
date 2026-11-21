@@ -40,6 +40,8 @@ export interface UssdDeps {
   readonly repo: UssdRepo;
   readonly pins: PinHasher;
   readonly log: (record: UssdLog) => void;
+  /** Requests allowed per phone per window; RATE_LIMIT_MAX (30) when absent (D15.1). */
+  readonly rateLimitMax?: number;
   /** Test hook for property UP3: every command shown on a confirm screen. */
   readonly onConfirmShown?: (command: MemberCommand) => void;
 }
@@ -88,7 +90,7 @@ async function pipeline(req: UssdRequest, deps: UssdDeps, setLang: (l: UssdLangu
   if (!phone.ok) return shown(screen("NOT_REGISTERED", {}));
   const now = deps.now();
   // 3. Rate limit (U5), before any PIN check.
-  if ((await deps.repo.hitRateLimit(phoneHash(phone.value), now)) > RATE_LIMIT_MAX) {
+  if ((await deps.repo.hitRateLimit(phoneHash(phone.value), now)) > (deps.rateLimitMax ?? RATE_LIMIT_MAX)) {
     return { screen: screen("RATE_LIMITED", {}), outcome: "rate_limited" };
   }
   // 4. Member (U4.2, U4.3).

@@ -115,7 +115,7 @@ Parse comes before auth, so garbage never reaches the database, and auth comes b
 ## 8a. Demo operations (D15)
 
 - **Rate limit.** `env.ts` parses `USSD_RATE_LIMIT_MAX` (default 30). `UssdDeps.rateLimitMax` replaces the `RATE_LIMIT_MAX` constant in the engine. The route passes it from `appEnv()`.
-- **Friendly rate-limit message.** `isRateLimitedReply(reply)` in `src/ussd/screens.ts` compares a reply with the rendered `RATE_LIMITED` screen in every registered language. It is pure, so the client component imports it.
+- **Friendly rate-limit message.** The simulator page (a server component) renders the `RATE_LIMITED` screen in every registered language and passes the strings to the client, which compares each reply (`isRateLimited` in `src/app/simulator/sim.ts`). The client never imports the USSD engine, which depends on the domain and `node:crypto`.
 - **Seed additions (R14.12).** At the last meeting, after the regular round: deposit requests from the chair and from Birungi Joan (seed channel, actor = member), and a loan request from Okello David (80,000 for 2 months). They don't change the anomaly or overdue counts.
 - **`demo:reset`** (`scripts/demo-reset.ts`, logic in `scripts/demo-reset-core.ts`). It follows the tamper script's pattern: the `ALLOW_DEMO_RESET` flag and an owner check. In one transaction:
   1. Read the TUBEERA member rows, keeping each member's `auth_user_id` (the chair and treasurer logins). Refuse if the group or either login is missing.

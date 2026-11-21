@@ -267,3 +267,21 @@ describe("ussd task 5: Language (U13) and write errors (U14)", () => {
     expect(w.logs).toEqual([{ event: "ussd", screen: "ERROR", outcome: "internal_error", code: "error" }]);
   });
 });
+
+describe("dashboard task 7: configurable rate limit (D15.1)", () => {
+  it("rateLimitMax replaces the default of 30", async () => {
+    const w = await world();
+    const deps = { ...w.deps(), rateLimitMax: 2 };
+    const call = () => handleUssd({ sessionId: "s", serviceCode: "*384#", phoneNumber: ALICE.phone, text: "" }, deps);
+    expect(await call()).toMatch(/^CON /);
+    expect(await call()).toMatch(/^CON /);
+    expect(await call()).toBe("END Too many requests from this number. Please try again in a few minutes.");
+  });
+
+  it("USSD_RATE_LIMIT_MAX is parsed from the environment: default absent, 1 to 10000, digits only", async () => {
+    const { parseEnv } = await import("../lib/env");
+    expect(parseEnv({}).USSD_RATE_LIMIT_MAX).toBeUndefined();
+    expect(parseEnv({ USSD_RATE_LIMIT_MAX: "120" }).USSD_RATE_LIMIT_MAX).toBe(120);
+    for (const bad of ["0", "10001", "-5", "3.5", "lots"]) expect(() => parseEnv({ USSD_RATE_LIMIT_MAX: bad })).toThrow(/USSD_RATE_LIMIT_MAX/);
+  });
+});

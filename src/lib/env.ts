@@ -23,6 +23,13 @@ export const envSchema = z.object({
   SUPABASE_URL: z.string().url().refine((u) => /^https?:\/\//.test(u), "must be an http(s) URL").optional(),
   /** Publishable (anon) key, server only: anon has no table grants (ledger-core R13.9). */
   SUPABASE_PUBLISHABLE_KEY: z.string().min(20, "must be the project's publishable key").optional(),
+  /** USSD requests allowed per phone per 5 minutes (dashboard-simulator D15.1). Default 30. */
+  USSD_RATE_LIMIT_MAX: z
+    .string()
+    .regex(/^\d{1,5}$/, "must be a whole number")
+    .transform(Number)
+    .refine((n) => n >= 1 && n <= 10_000, "must be from 1 to 10000")
+    .optional(),
   /** If set, the login page shows the demo leaders' password (dashboard-simulator D1.9). */
   DEMO_LEADER_PASSWORD_HINT: z.string().min(1).max(100).optional(),
   /** Must never be set where the app runs (README). Read only by the seed script. */

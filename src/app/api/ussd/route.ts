@@ -27,6 +27,7 @@ function getDeps(): UssdDeps {
       repo: createUssdRepo(db),
       pins: argon2PinHasher,
       log: (r) => logJson({ ...r }),
+      ...(env.USSD_RATE_LIMIT_MAX === undefined ? {} : { rateLimitMax: env.USSD_RATE_LIMIT_MAX }),
     };
   }
   return deps;
