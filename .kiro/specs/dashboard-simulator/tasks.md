@@ -23,7 +23,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - Pages with forms wired to the actions, and the register-member sheet.
   - Tests: page view models for empty and seeded groups; the register form shows field errors.
 
-- [ ] 5. Loans and cash-in (D6, D7)
+- [x] 5. Loans and cash-in (D6, D7)
   - Approve/Reject sheets, the active-loan list and the cash-in form.
   - Tests: view models; a repayment above outstanding shows the `EXCEEDS_OUTSTANDING` message.
 

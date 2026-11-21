@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { ChainStatus } from "../../components/ChainStatus";
+import { ToastProvider } from "../../components/Toast";
 import { Card, GhostLogo, buttonClass } from "../../components/ui";
 import { signOut } from "../login/actions";
 import { currentSession, loadGroupData } from "./_lib/server";
@@ -30,6 +31,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const { leader, group } = session;
   const chain = chainView((await loadGroupData(group.id)).entries);
   return (
+    <ToastProvider>
     <div className="min-h-screen md:flex">
       {/* Desktop rail */}
       <nav aria-label="Dashboard" className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col gap-1 border-r border-line bg-surface/60 p-4 md:flex">
@@ -94,5 +96,6 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         </nav>
       </div>
     </div>
+    </ToastProvider>
   );
 }
