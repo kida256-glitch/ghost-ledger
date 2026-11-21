@@ -13,7 +13,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - Tests: an in-memory client and server pair lists 6 tools and calls `verify_chain` on PGlite; stdout carries protocol only.
   - Then: once the user has added the config, call the tools from Kiro against the local seeded database and record the result in KIRO_USAGE.md (A7.3).
 
-- [ ] 3. Agent core and the mock provider (A4.2, A5; design §4, §5)
+- [x] 3. Agent core and the mock provider (A4.2, A5; design §4, §5)
   - `src/agent/{provider,mock,agent,prompt}.ts`.
   - Tests: keyword routing; templated answers on the seed (the anomalies with their seqs; "failed at seq N" after a tamper; "I can't tell from the ledger" for an off-topic question); the injection fixture (A5.3); the round cap; a fake provider that asks for an unknown tool or bad arguments gets a tool error and the loop still ends.
 
