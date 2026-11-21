@@ -1,5 +1,7 @@
 # Tasks: dashboard-simulator
 
+Build order (user, after task 1): 2, 7 (simulator), 3, then the leader-action pages (5 and the deposits and reversal parts of 4 and 6), members, ledger and alerts, 8, 9, 10.
+
 Every task ends with the Definition of Done (`npm run typecheck && npm run lint && npm test && npm run build`), a commit, and an update to `KIRO_USAGE.md`. Property titles name the requirement ids they cover. There are no mutation checks for this spec.
 
 - [x] 1. Auth, shell and the group overview (D1, D2, D3, D11; design §3, §6, §7)
@@ -9,7 +11,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - Tests: `requireLeader` for each session kind; the middleware copies cookies and cache headers; `appEnv` still refuses the service-role key; overview view model equals the domain summaries; every dashboard page has `loading.tsx` and `error.tsx`. Integration: the seeded chair signs in against local Supabase, and `anon` reads nothing.
   - **Then stop:** the user deploys to Vercel and reports that login works on the hosted site.
 
-- [ ] 2. Offers, views and messages (design §4, §6)
+- [x] 2. Offers, views and messages (design §4, §6)
   - `offers.ts`, the remaining views, and `messages.ts`.
   - Tests: **DP1** `D14.1 D5.2 D6.2 D8.2 every offer is accepted by the domain and every actionable request is offered`; messages for every code.
 
