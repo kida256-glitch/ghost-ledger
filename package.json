@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.2",
     "next": "^15.5.29",
     "pg": "^8.23.1",

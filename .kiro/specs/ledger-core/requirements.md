@@ -254,6 +254,7 @@ USSD menus, PINs, the MCP server, the agent and the dashboard are separate specs
 9. IF the group already exists, THEN the seed script SHALL exit with a clear message and change nothing.
 10. The seed script SHALL refuse to run unless the privileged connection string (`ADMIN_DATABASE_URL`) is set and the environment is not production.
 11. The seed script SHALL create two demo leader accounts in Supabase Auth (email and password, password taken from an environment variable) and link each to a seeded leader member. It SHALL NOT implement any custom authentication.
+12. The seed SHALL leave 2 pending deposit requests (one of them the chair's own) and 1 pending loan request, so leaders have work to do in the demo (added by the dashboard-simulator spec).
 
 ### Requirement 15: Tamper demo
 

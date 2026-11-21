@@ -42,7 +42,7 @@ The USSD engine lets members use Ghost Ledger from a feature phone. It handles t
 ### U5: Rate limiting
 
 1. The engine SHALL count every request per normalized phone number in a 5-minute fixed window, stored in the database under a SHA-256 of the number.
-2. IF a phone number makes more than 30 requests in one window, THEN the engine SHALL return `END` asking the user to try again later, without checking any PIN.
+2. IF a phone number makes more than 30 requests in one window (configurable with `USSD_RATE_LIMIT_MAX`, dashboard-simulator D15.1), THEN the engine SHALL return `END` asking the user to try again later, without checking any PIN.
 
 ### U6: PIN setup (first dial)
 

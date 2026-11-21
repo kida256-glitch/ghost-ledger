@@ -36,7 +36,9 @@ browser ──cookies──▶ middleware.ts (refresh session, getClaims)
 - **Sign-in.** A server action calls `supabase.auth.signInWithPassword` and redirects to `/dashboard`. On failure it always shows "Email or password is wrong", whatever the cause. It is rate-limited by Supabase Auth's own limits.
 - **Each request.** `getClaims()` verifies the JWT. With asymmetric signing keys, the default for new projects, it verifies locally against cached JWKS, with no network call. Then `reader.getMemberByAuthUserId(sub)`, then `isLeaderOf(member, member.groupId)`.
 - **Vercel.** The cookies are `sb-<ref>-auth-token`. Middleware refreshes them, and every dashboard route is `dynamic = "force-dynamic"` with `Cache-Control: private, no-store`, so a refreshed `Set-Cookie` is never cached.
-- **Demo sign-in hint.** The login page shows the two demo emails. It shows the password only if the server env `DEMO_LEADER_PASSWORD_HINT` is set; on Vercel it is set to the same value used by the seed. The group is fictional, and judges need to sign in with no setup. **Needs your approval.** The alternative is to give judges the password in the submission text only.
+- **Demo sign-in hint (approved).** The login page shows the two demo emails, and the password when the server env `DEMO_LEADER_PASSWORD_HINT` is set. On Vercel it is set to the same value used by the seed.
+- **Sign-ups off.** `supabase/config.toml` sets `[auth] enable_signup = false`. The hosted checklist turns off "Allow new users to sign up" in *Authentication → Sign In / Providers*. `auth.admin.createUser` still works.
+- **Demo notice.** The dashboard layout shows a slim banner: "Demo group: fictional people. Every action is permanent: the ledger is append-only."
 
 ## 4. Offers (D5–D8, D14.1)
 
@@ -110,6 +112,20 @@ Parse comes before auth, so garbage never reaches the database, and auth comes b
 - **Demo panel:** server-rendered from `DEMO_PINS` and `buildSeed("2026-11-20").members` (names and phones don't depend on the anchor). It has tap-to-dial rows, a "fictional group" note, and the Waiswa Henry note. It also says that if a demo PIN is locked, the operator runs `npm run demo:unlock`.
 - **Rate limit:** judges sharing one demo phone share its limit (30 requests per 5 minutes). The panel suggests choosing different members.
 
+## 8a. Demo operations (D15)
+
+- **Rate limit.** `env.ts` parses `USSD_RATE_LIMIT_MAX` (default 30). `UssdDeps.rateLimitMax` replaces the `RATE_LIMIT_MAX` constant in the engine. The route passes it from `appEnv()`.
+- **Friendly rate-limit message.** `isRateLimitedReply(reply)` in `src/ussd/screens.ts` compares a reply with the rendered `RATE_LIMITED` screen in every registered language. It is pure, so the client component imports it.
+- **Seed additions (R14.12).** At the last meeting, after the regular round: deposit requests from the chair and from Birungi Joan (seed channel, actor = member), and a loan request from Okello David (80,000 for 2 months). They don't change the anomaly or overdue counts.
+- **`demo:reset`** (`scripts/demo-reset.ts`, logic in `scripts/demo-reset-core.ts`). It follows the tamper script's pattern: the `ALLOW_DEMO_RESET` flag and an owner check. In one transaction:
+  1. Read the TUBEERA member rows, keeping each member's `auth_user_id` (the chair and treasurer logins). Refuse if the group or either login is missing.
+  2. `alter table … disable trigger` for `ledger_entries_append_only`, `groups_append_only`, `members_no_delete` and `member_credentials_no_delete`.
+  3. Delete the group's entries, then its credentials, then its rate-limit rows (by phone hash), then its members, then the group.
+  4. Enable the triggers again.
+  5. Insert `buildSeed(today)` through the same `insertSeed` used by `db:seed`, with the kept logins and the demo PIN hashes.
+
+  `ALTER TABLE` is transactional, so a failure rolls everything back, triggers included. It prints counts only. No service-role key is needed, because the logins are reused.
+
 ## 9. Testing
 
 | Property | Requirement | How |
@@ -132,7 +148,7 @@ Integration and E2E:
 
 - The integration test gains a check that the seeded leader can sign in with the publishable key against local Supabase, that `getClaims` returns their id, and that `anon` still reads nothing.
 - `hosted:check` gains two checks: `/dashboard` without a session redirects to `/login`, and `/simulator` returns 200.
-- Playwright (optional, last): sign in as the chair, confirm a deposit, see the ledger verified; dial Balance in the simulator.
+- Playwright (optional, last) automates the DEMO.md walkthrough (D16). Until then, D16 is checked by hand in task 9, against local Supabase.
 
 ## 10. Decisions
 

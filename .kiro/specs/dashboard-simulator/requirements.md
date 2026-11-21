@@ -20,6 +20,9 @@ This spec covers the leader dashboard and the browser phone simulator. Leaders s
 4. Every dashboard page and every server action SHALL verify the session with `getClaims()` and then load the member by `auth_user_id`. IF there is no valid session, THEN pages SHALL redirect to `/login`. IF the user is not an active leader, THEN the dashboard SHALL show "not a leader" with a sign-out button, and no group data.
 5. The group SHALL always come from the signed-in leader's member record, never from request input.
 6. Sign-out SHALL clear the session cookies.
+7. The Supabase publishable key SHALL be used only on the server. The service-role key SHALL NOT be set on Vercel, and the app SHALL refuse to start if it is set.
+8. New-user sign-ups SHALL be disabled in Supabase Auth (locally in `supabase/config.toml`, and on the hosted project through the dashboard setting). The README and DEMO.md SHALL say so. The seed creates the leaders through the admin API, which works with sign-ups off.
+9. WHEN `DEMO_LEADER_PASSWORD_HINT` is set, the login page SHALL show the two demo emails and that password.
 
 ### D2: Look and feel
 
@@ -27,6 +30,7 @@ This spec covers the leader dashboard and the browser phone simulator. Leaders s
 2. It SHALL use one consistent dark visual identity with a ghost motif, defined by shared design tokens and components.
 3. Every data view SHALL have a loading state, an empty state and an error state. An error state SHALL NOT show internal details.
 4. Amounts SHALL show as `UGX 5,000` and times in Africa/Kampala.
+5. Every leader page SHALL show a notice that this is a fictional demo group and that every action is permanent.
 
 ### D3: Overview
 
@@ -84,6 +88,18 @@ This spec covers the leader dashboard and the browser phone simulator. Leaders s
 3. A side panel SHALL list the demo members' names, phone numbers and PINs from `src/seed/demo-pins.ts`, mark the group as fictional, and say that Waiswa Henry has no PIN so the first dial shows PIN setup. Choosing a member SHALL set the phone number.
 4. The simulator SHALL show what was typed except PIN positions, which it SHALL mask, and SHALL NOT store `text` anywhere.
 5. The page SHALL explain that it writes real deposit and loan requests to the demo ledger, and that leaders confirm or approve them on the dashboard.
+6. WHEN `/api/ussd` returns the rate-limit screen, the simulator SHALL show a friendly explanation (wait a few minutes, or pick another demo member).
+
+### D15: Demo operations
+
+1. The USSD rate limit SHALL be read from `USSD_RATE_LIMIT_MAX` (requests per phone per 5 minutes; an integer from 1 to 10000), with 30 as the default. (Amends ussd-engine U5.)
+2. The seed SHALL leave work for judges: 2 pending deposit requests (one of them the chair's own, so "another leader must confirm" shows) and 1 pending loan request. (Amends ledger-core R14 as R14.12.)
+3. `npm run demo:reset` SHALL recreate a fresh demo group: as the table owner through `ADMIN_DATABASE_URL`, only with `ALLOW_DEMO_RESET=true`, and only when `current_user` owns `ledger_entries`. In one transaction it SHALL remove the TUBEERA group's entries, credentials, members, rate-limit rows and group, then insert a fresh seed anchored on today (Kampala), keeping the existing demo leader logins. It SHALL refuse, changing nothing, if the group or a demo login is missing. It SHALL never touch other groups.
+4. DEMO.md SHALL say to run `demo:reset` before recording the video and again before submitting.
+
+### D16: Acceptance
+
+1. The judge walkthrough in DEMO.md SHALL run end to end on the dashboard and the simulator against local Supabase: dial in (first-dial PIN setup), deposit request, loan request, a leader confirms the deposit and approves the loan, the chain shows verified, `demo:tamper`, the chain shows failed at seq N, `demo:restore`, and the anomalies listed.
 
 ### D13: Writes and errors
 
