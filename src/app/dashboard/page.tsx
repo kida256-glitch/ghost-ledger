@@ -27,18 +27,18 @@ export default async function OverviewPage() {
         <Stat label="Owed on loans">
           <Money amount={v.totalOutstanding} />
         </Stat>
-        <Stat label="Active members">{v.activeMembers}</Stat>
-        <Stat label="Active loans">{v.activeLoans}</Stat>
-        <Stat label="Overdue loans" tone={v.overdueLoans > 0 ? "warning" : undefined}>
+        <Stat label="Active members" href="/dashboard/members">{v.activeMembers}</Stat>
+        <Stat label="Active loans" href="/dashboard/loans">{v.activeLoans}</Stat>
+        <Stat label="Overdue loans" href="/dashboard/loans" tone={v.overdueLoans > 0 ? "warning" : undefined}>
           {v.overdueLoans}
         </Stat>
-        <Stat label="Deposits to confirm" tone={v.pendingDeposits > 0 ? "warning" : undefined}>
+        <Stat label="Deposits to confirm" href="/dashboard/deposits" tone={v.pendingDeposits > 0 ? "warning" : undefined}>
           {v.pendingDeposits}
         </Stat>
-        <Stat label="Loan requests" tone={v.pendingLoans > 0 ? "warning" : undefined}>
+        <Stat label="Loan requests" href="/dashboard/loans" tone={v.pendingLoans > 0 ? "warning" : undefined}>
           {v.pendingLoans}
         </Stat>
-        <Stat label="High alerts" tone={v.highAlerts > 0 ? "danger" : undefined}>
+        <Stat label="High alerts" href="/dashboard/alerts" tone={v.highAlerts > 0 ? "danger" : undefined}>
           {v.highAlerts}
         </Stat>
       </div>

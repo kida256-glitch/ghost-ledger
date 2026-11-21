@@ -10,9 +10,12 @@ export const NAV: readonly NavItem[] = [
   { href: "/dashboard", label: "Home", icon: "⌂", tab: true },
   { href: "/dashboard/deposits", label: "Deposits", icon: "↓", tab: true },
   { href: "/dashboard/loans", label: "Loans", icon: "≡", tab: true },
+  { href: "/dashboard/ledger", label: "Ledger", icon: "⛓", tab: true },
   { href: "/dashboard/cash", label: "Cash in", icon: "+", tab: false },
+  { href: "/dashboard/members", label: "Members", icon: "☺", tab: false },
+  { href: "/dashboard/alerts", label: "Alerts", icon: "!", tab: false },
   { href: "/dashboard/more", label: "More", icon: "…", tab: true },
 ];
 
-/** Items listed on the More page (and in the desktop rail via NAV). */
-export const MORE: readonly NavItem[] = [{ href: "/dashboard/cash", label: "Record cash in", icon: "+", tab: false }];
+/** Items listed on the More page. */
+export const MORE: readonly NavItem[] = NAV.filter((i) => !i.tab);

@@ -34,7 +34,7 @@ export function ChainStatus({ chain, compact = false }: { chain: ChainView; comp
       </div>
       <div className="mt-1 text-sm text-text/80">
         A past entry was changed outside the app ({chain.reason.toLowerCase().replace(/_/g, " ")}).{" "}
-        <Link className="underline" href={chain.seq === null ? "/dashboard/ledger" : `/dashboard/ledger?seq=${chain.seq}`}>
+        <Link className="underline" href={chain.seq === null ? "/dashboard/ledger" : `/dashboard/ledger?seq=${chain.seq}#seq-${chain.seq}`}>
           See it in the ledger
         </Link>
       </div>

@@ -19,7 +19,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - `actions-core.ts` and `actions.ts`, with zod schemas and idempotency keys.
   - Tests: **DP2** `D14.2 no server action can be called by a non-leader`; **DP3** `D14.3 actions never throw and only write as the leader in the leader's group`; each action on PGlite through the real writer (Approve writes 2 entries, a double submit writes once); the source checks from design §9.
 
-- [ ] 4. Members and deposits (D4, D5)
+- [x] 4. Members and deposits (D4, D5)
   - Pages with forms wired to the actions, and the register-member sheet.
   - Tests: page view models for empty and seeded groups; the register form shows field errors.
 
@@ -27,7 +27,7 @@ Every task ends with the Definition of Done (`npm run typecheck && npm run lint 
   - Approve/Reject sheets, the active-loan list and the cash-in form.
   - Tests: view models; a repayment above outstanding shows the `EXCEEDS_OUTSTANDING` message.
 
-- [ ] 6. Ledger viewer, reversals, alerts (D8, D9, D10)
+- [x] 6. Ledger viewer, reversals, alerts (D8, D9, D10)
   - Status banner with the full head hash, pagination, entry expand, the Reverse sheet, and the alerts list linking to entries.
   - Tests: pagination and ordering; the banner after `demo:tamper` on PGlite shows "failed at seq N"; alerts sorted by severity and then time.
 

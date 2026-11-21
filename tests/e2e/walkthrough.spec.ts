@@ -92,3 +92,31 @@ test("6. the planted anomalies are listed", async ({ page }) => {
   await expect(page.getByText("Loan paid out with no approval")).toBeVisible();
   await expect(page.getByText("Loan above the savings limit")).toBeVisible();
 });
+
+test("7. a leader registers a member and reverses an entry", async ({ page }) => {
+  await signIn(page, "tubeera.chair@example.com");
+  await page.goto("/dashboard/members");
+  await page.getByText("+ Register a member").click();
+  await page.getByLabel("Name (as the group knows them)").fill("Opio Brian");
+  await page.getByLabel("Mobile number").fill("0772 555 123");
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+  await expect(page.getByTestId("toast")).toContainText("Opio Brian is registered");
+  await page.reload();
+  await expect(page.getByText("+256772555123")).toBeVisible();
+  // The same phone again is refused with a clear message.
+  await page.getByText("+ Register a member").click();
+  await page.getByLabel("Name (as the group knows them)").fill("Opio Again");
+  await page.getByLabel("Mobile number").fill("+256772555123");
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+  await expect(page.getByText("That phone number is already registered to a member.")).toBeVisible();
+
+  await page.goto("/dashboard/ledger");
+  const newest = page.locator("li[id^=seq-]").filter({ hasText: "Loan paid out" }).first();
+  await newest.locator("summary").click();
+  await newest.getByLabel(/Reason/).fill("Demo: recorded by mistake");
+  await newest.getByRole("button", { name: "Reverse this entry" }).click();
+  await expect(page.getByTestId("toast")).toContainText("Entry reversed");
+  await page.reload();
+  await expect(page.locator("li[id^=seq-]").first()).toContainText("Reversal");
+  await expect(page.getByText("Chain verified")).toBeVisible();
+});
